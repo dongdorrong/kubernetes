@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: "gitlab-ingress"
+  annotations:    
+    cert-manager.io/cluster-issuer: "letsencrypt-production"    
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - dongdorrong-gitlab.crscube.io
+      secretName: gitlab-tls
+  rules:
+    - host: dongdorrong-gitlab.crscube.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gitlab-webservice-default
+                port:
+                  number: 8080
