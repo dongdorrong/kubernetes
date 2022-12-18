@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: es-pv
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  awsElasticBlockStore:
+    fsType: ext4
+    volumeID: aws://ap-southeast-1/vol-0ee81c78251975f4b
+  capacity:
+    storage: 50Gi
+  persistentVolumeReclaimPolicy: Delete
+  storageClassName: gp2
