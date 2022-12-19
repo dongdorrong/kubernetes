@@ -25,30 +25,30 @@ jobs:
       - name: Build and push (A)
         uses: docker/build-push-action@v2
         id: docker_build_a
+        build-args: DONGDORRONG_VAR "SERVICE_A"
         with:
           context: .
           file: ./project01/resources/container/Dockerfile
           push: true
-          build-args: DONGDORRONG_VAR "SERVICE_A"
           tags: |
             ghcr.io/${{ github.repository_owner }}/project01/service_a:latest
       - name: Build and push (B)
         uses: docker/build-push-action@v2
         id: docker_build_b
+        build-args: DONGDORRONG_VAR "SERVICE_B"
         with:
           context: .
           file: ./project01/resources/container/Dockerfile
           push: true
-          build-args: DONGDORRONG_VAR "SERVICE_B"
           tags: |
             ghcr.io/${{ github.repository_owner }}/project01/service_b:latest
       - name: Build and push (C)
         uses: docker/build-push-action@v2
         id: docker_build_c
+        build-args: DONGDORRONG_VAR "SERVICE_C"
         with:
           context: .
           file: ./project01/resources/container/Dockerfile
           push: true
-          build-args: DONGDORRONG_VAR "SERVICE_C"
           tags: |
             ghcr.io/${{ github.repository_owner }}/project01/service_c:latest
