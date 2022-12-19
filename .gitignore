@@ -1,2 +1,5 @@
 samples
+sample
 update_config.sh
+.terraform
+.terraform.lock.hcl
