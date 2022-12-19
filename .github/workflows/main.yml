@@ -29,7 +29,7 @@ jobs:
           context: .
           file: ./project01/resources/container/Dockerfile
           push: true
-          build-args: DONGDORRONG_VAR="SERVICE_A"
+          build-args: DONGDORRONG_VAR "SERVICE_A"
           tags: |
             ghcr.io/${{ github.repository_owner }}/project01/service_a:latest
       - name: Build and push (B)
@@ -39,7 +39,7 @@ jobs:
           context: .
           file: ./project01/resources/container/Dockerfile
           push: true
-          build-args: DONGDORRONG_VAR="SERVICE_B"
+          build-args: DONGDORRONG_VAR "SERVICE_B"
           tags: |
             ghcr.io/${{ github.repository_owner }}/project01/service_b:latest
       - name: Build and push (C)
@@ -49,6 +49,6 @@ jobs:
           context: .
           file: ./project01/resources/container/Dockerfile
           push: true
-          build-args: DONGDORRONG_VAR="SERVICE_C"
+          build-args: DONGDORRONG_VAR "SERVICE_C"
           tags: |
             ghcr.io/${{ github.repository_owner }}/project01/service_c:latest
