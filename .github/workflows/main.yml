@@ -24,7 +24,7 @@ jobs:
           password: ${{ secrets.CR_PAT }}
       - name: Build and push (A)
         uses: docker/build-push-action@v2
-        id: docker_build
+        id: docker_build_a
         with:
           context: .
           file: ./project01/resources/container/Dockerfile
@@ -34,7 +34,7 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/project01/service_a:latest
       - name: Build and push (B)
         uses: docker/build-push-action@v2
-        id: docker_build
+        id: docker_build_b
         with:
           context: .
           file: ./project01/resources/container/Dockerfile
@@ -44,7 +44,7 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/project01/service_b:latest
       - name: Build and push (C)
         uses: docker/build-push-action@v2
-        id: docker_build
+        id: docker_build_c
         with:
           context: .
           file: ./project01/resources/container/Dockerfile
