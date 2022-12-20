@@ -3,7 +3,7 @@ module "eks" {
   version = "18.26.6"
 
   cluster_name    = local.cluster_name
-  cluster_version = "1.22"
+  cluster_version = "1.23"
 
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
@@ -21,7 +21,8 @@ module "eks" {
     one = {
       name = "node-group-1"
 
-      instance_types = ["t3.micro"]
+      # instance_types = ["t3.micro"]
+      instance_types = ["t3.large"]
 
       min_size     = 1
       max_size     = 2
@@ -41,9 +42,9 @@ module "eks" {
 
       instance_types = ["t3.medium"]
 
-      min_size     = 1
+      min_size     = 0
       max_size     = 2
-      desired_size = 1
+      desired_size = 0
 
       pre_bootstrap_user_data = <<-EOT
       echo 'foo bar'
