@@ -40,7 +40,7 @@ securityContext: {}
 
 service:
   name: ""
-  type: ClusterIP
+  type: NodePort
   port: ""
   containerport: "80"
 

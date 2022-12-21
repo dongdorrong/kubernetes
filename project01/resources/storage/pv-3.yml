@@ -8,7 +8,7 @@ spec:
     - ReadWriteOnce
   awsElasticBlockStore:
     fsType: ext4
-    volumeID: aws://ap-northeast-2/vol-0a0411c35227e2461
+    volumeID: aws://ap-northeast-2/vol-0ae964b05f51061d5
   capacity:
     storage: 100Gi
   persistentVolumeReclaimPolicy: Delete
