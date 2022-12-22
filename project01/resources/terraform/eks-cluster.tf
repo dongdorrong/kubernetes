@@ -23,7 +23,8 @@ module "eks" {
       name = "node-group-1"
 
       # instance_types = ["t3.micro"]
-      instance_types = ["t3.large"]
+      # instance_types = ["t3.large"]
+      instance_types = ["t3.medium"]
       capacity_type  = "SPOT"
 
       min_size     = 1
