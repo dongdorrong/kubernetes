@@ -12,15 +12,15 @@ resource "aws_security_group" "node_group_one" {
     ]
   }
 
-  ingress {
-    from_port = 0
-    to_port   = 0
-    protocol  = "tcp"
+  # ingress {
+  #   from_port = 0
+  #   to_port   = 0
+  #   protocol  = "tcp"
 
-    cidr_blocks = [
-      "180.150.205.26",
-    ]
-  }
+  #   cidr_blocks = [
+  #     "180.150.205.26/32",
+  #   ]
+  # }
 }
 
 resource "aws_security_group" "node_group_two" {
