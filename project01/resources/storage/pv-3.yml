@@ -1,14 +1,14 @@
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: gp-pv-3
+  name: gp-pv-33
   namespace: prometheus
 spec:
   accessModes:
     - ReadWriteOnce
   awsElasticBlockStore:
     fsType: ext4
-    volumeID: aws://ap-northeast-2/vol-0ae964b05f51061d5
+    volumeID: aws://ap-northeast-2/vol-0ca1c673880057aa3
   capacity:
     storage: 100Gi
   persistentVolumeReclaimPolicy: Delete
