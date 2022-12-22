@@ -41,7 +41,7 @@ securityContext: {}
 service:
   name: "ddr-svc-c"
   type: NodePort
-  port: "8383"
+  port: "8686"
   containerport: "80"
 
 deployment:
