@@ -11,6 +11,16 @@ resource "aws_security_group" "node_group_one" {
       "10.0.0.0/8",
     ]
   }
+
+  ingress {
+    from_port = 0
+    to_port   = 0
+    protocol  = "tcp"
+
+    cidr_blocks = [
+      "180.150.205.26",
+    ]
+  }
 }
 
 resource "aws_security_group" "node_group_two" {
