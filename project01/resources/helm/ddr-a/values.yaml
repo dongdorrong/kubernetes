@@ -7,7 +7,7 @@ namespace: dongdorrong
 replicaCount: 1
 
 image:
-  repository: ""
+  repository: "ghcr.io/dongdorrong/project01/service_a"
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: "latest"
@@ -23,7 +23,7 @@ serviceAccount:
   annotations: {}
   # The name of the service account to use.
   # If not set and create is true, a name is generated using the fullname template
-  name: ""
+  name: "ddr-sa-a"
 
 podAnnotations: {}
 
@@ -39,13 +39,13 @@ securityContext: {}
   # runAsUser: 1000
 
 service:
-  name: ""
+  name: "ddr-svc-a"
   type: NodePort
-  port: ""
+  port: "8181"
   containerport: "80"
 
 deployment:
-  name: ""
+  name: "ddr-deploy-a"
 
 ingress:
   enabled: false
@@ -54,7 +54,7 @@ ingress:
     # kubernetes.io/ingress.class: nginx
     # kubernetes.io/tls-acme: "true"
   hosts:
-    - host: chart-example.local
+    - host: ddr-svc-a.local
       paths:
         - path: /
           pathType: ImplementationSpecific
