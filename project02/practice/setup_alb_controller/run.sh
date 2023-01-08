@@ -1,4 +1,5 @@
 #!/bin/bash
+
 aws eks update-kubeconfig --region ap-northeast-2 --name dongdorrong-eks-pxd24W1T
 
 curl -o iam_policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.4.4/docs/install/iam_policy.json
