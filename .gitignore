@@ -1,6 +1,8 @@
-samples
-sample
+sample*
+.terraform*
+terraform_bak
+terraform.tfstate*
 update_config.sh
-.terraform
-.terraform.lock.hcl
 install.sh
+project_test/
+argocd.info
