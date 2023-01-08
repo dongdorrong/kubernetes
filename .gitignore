@@ -3,6 +3,7 @@ sample*
 terraform_bak
 terraform.tfstate*
 update_config.sh
+docker_registry.sh
 install.sh
 project_test/
 argocd.info
