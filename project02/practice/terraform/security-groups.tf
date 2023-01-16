@@ -34,8 +34,8 @@ resource "aws_security_group" "node_group_two" {
     protocol  = "tcp"
 
     security_groups = [ 
-      data.aws_security_group.eks_alb_sg.id, 
-      data.aws_security_group.argocd_alb_sg.id 
+      data.aws_security_group.eks_alb_sg.id,
+      data.aws_security_group.argocd_alb_sg.id
     ]
   }
 
@@ -51,6 +51,6 @@ data "aws_security_group" "eks_alb_sg" {
 data "aws_security_group" "argocd_alb_sg" {
   filter {
     name   = "tag:Name"
-    values = [ "k8s-elb-aa22fec6ee8544a41b70a571ff3591ff" ]
+    values = [ "k8s-elb-a234f2329747143a280912f4ea757e6a" ]
   }
 }
