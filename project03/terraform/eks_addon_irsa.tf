@@ -1,15 +1,15 @@
-# # OIDC Provider 설정
-# data "tls_certificate" "this" {
-#     url = aws_eks_cluster.this.identity[0].oidc[0].issuer
-# }
+# OIDC Provider 설정
+data "tls_certificate" "this" {
+    url = aws_eks_cluster.this.identity[0].oidc[0].issuer
+}
 
-# resource "aws_iam_openid_connect_provider" "this" {
-#     client_id_list  = ["sts.amazonaws.com"]
-#     thumbprint_list = [data.tls_certificate.this.certificates[0].sha1_fingerprint]
-#     url             = aws_eks_cluster.this.identity[0].oidc[0].issuer
+resource "aws_iam_openid_connect_provider" "this" {
+    client_id_list  = [ "sts.amazonaws.com" ]
+    thumbprint_list = [ data.tls_certificate.this.certificates[0].sha1_fingerprint ]
+    url             = aws_eks_cluster.this.identity[0].oidc[0].issuer
 
-#     depends_on = [aws_eks_cluster.this]
-# }
+    depends_on      = [ aws_eks_cluster.this ]
+}
 
 # # EBS CSI Controller를 위한 IRSA
 # data "aws_iam_policy_document" "ebs_csi_assume_role" {

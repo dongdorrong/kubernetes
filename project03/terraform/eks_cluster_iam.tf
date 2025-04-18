@@ -25,8 +25,8 @@ resource "aws_iam_role_policy_attachment" "cluster_AmazonEKSServicePolicy" {
     role       = aws_iam_role.cluster.name
 }
 
-# 노드 그룹 IAM 역할
-resource "aws_iam_role" "node" {
+# 기본 노드 그룹 IAM 역할
+resource "aws_iam_role" "default_node_group" {
     name = "eksstudy-node-role"
 
     assume_role_policy = jsonencode({
@@ -43,18 +43,18 @@ resource "aws_iam_role" "node" {
     })
 }
 
-# 노드 그룹 IAM 정책 연결
-resource "aws_iam_role_policy_attachment" "node_policy" {
+# 기본 노드 그룹 IAM 정책 연결
+resource "aws_iam_role_policy_attachment" "default_node_nodePolicy" {
     policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
-    role       = aws_iam_role.node.name
+    role       = aws_iam_role.default_node_group.name
 }
 
-resource "aws_iam_role_policy_attachment" "cni_policy" {
+resource "aws_iam_role_policy_attachment" "default_node_cniPolicy" {
     policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
-    role       = aws_iam_role.node.name
+    role       = aws_iam_role.default_node_group.name
 }
 
-resource "aws_iam_role_policy_attachment" "registry_policy" {
+resource "aws_iam_role_policy_attachment" "default_node_registryPolicy" {
     policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
-    role       = aws_iam_role.node.name
-} 
+    role       = aws_iam_role.default_node_group.name
+}

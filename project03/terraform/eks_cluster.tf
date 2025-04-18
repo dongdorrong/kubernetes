@@ -1,21 +1,21 @@
-# # EKS 클러스터 생성
-# resource "aws_eks_cluster" "this" {
-#     name     = local.cluster_name
-#     role_arn = aws_iam_role.cluster.arn
-#     version  = "1.32"
+# EKS 클러스터 생성
+resource "aws_eks_cluster" "this" {
+    name     = local.cluster_name
+    role_arn = aws_iam_role.cluster.arn
+    version  = "1.32"
 
-#     vpc_config {
-#         subnet_ids              = local.subnet_ids
-#         endpoint_private_access = true
-#         endpoint_public_access  = true
-#         security_group_ids      = [ aws_security_group.additional.id ]
-#     }
+    vpc_config {
+        subnet_ids              = local.subnet_ids
+        endpoint_private_access = true
+        endpoint_public_access  = true
+        security_group_ids      = [ aws_security_group.additional.id ]
+    }
 
-#     depends_on = [
-#         aws_iam_role_policy_attachment.cluster_AmazonEKSClusterPolicy,
-#         aws_iam_role_policy_attachment.cluster_AmazonEKSServicePolicy
-#     ]
-# }
+    depends_on = [
+        aws_iam_role_policy_attachment.cluster_AmazonEKSClusterPolicy,
+        aws_iam_role_policy_attachment.cluster_AmazonEKSServicePolicy
+    ]
+}
 
 # 추가 보안 그룹 (사용자 정의 규칙용)
 resource "aws_security_group" "additional" {
@@ -28,14 +28,14 @@ resource "aws_security_group" "additional" {
         from_port   = 0
         to_port     = 0
         protocol    = "-1"
-        cidr_blocks = [local.vpc_cidr]
+        cidr_blocks = [ local.vpc_cidr ]
     }
 
     egress {
         from_port   = 0
         to_port     = 0
         protocol    = "-1"
-        cidr_blocks = ["0.0.0.0/0"]
+        cidr_blocks = [ "0.0.0.0/0" ]
     }
 
     tags = merge(
@@ -59,46 +59,51 @@ resource "kubernetes_config_map" "aws_auth" {
             {
                 rolearn  = aws_iam_role.eks_admin.arn
                 username = "admin"
-                groups   = ["system:masters"]
+                groups   = [ "system:masters" ]
+            },
+            {
+                rolearn  = aws_iam_role.default_node_group.arn
+                username = "system:node:{{EC2PrivateDNSName}}"
+                groups   = [ "system:bootstrappers", "system:nodes" ]
             }
         ])
     }
 
-    depends_on = [aws_eks_cluster.this]
+    depends_on = [ aws_eks_cluster.this ]
 }
 
-# # EKS 기본 노드 그룹
-# resource "aws_eks_node_group" "default" {
-#     cluster_name    = aws_eks_cluster.this.name
-#     node_group_name = "default"
-#     node_role_arn   = aws_iam_role.node.arn
-#     subnet_ids      = local.subnet_ids
+# EKS 기본 노드 그룹
+resource "aws_eks_node_group" "default" {
+    cluster_name    = aws_eks_cluster.this.name
+    node_group_name = "default"
+    node_role_arn   = aws_iam_role.default_node_group.arn
+    subnet_ids      = local.subnet_ids
 
-#     instance_types = ["t3.medium"]
-#     ami_type       = "AL2023_x86_64_STANDARD"
-#     capacity_type  = "SPOT"
+    instance_types = [ "t3.medium" ]
+    ami_type       = "AL2023_x86_64_STANDARD"
+    capacity_type  = "SPOT"
 
-#     scaling_config {
-#         desired_size = 1
-#         min_size     = 1
-#         max_size     = 1
-#     }
+    scaling_config {
+        desired_size = 2
+        min_size     = 2
+        max_size     = 2
+    }
 
-#     update_config {
-#         max_unavailable = 1
-#     }
+    update_config {
+        max_unavailable = 2
+    }
 
-#     depends_on = [
-#         aws_iam_role_policy_attachment.node_policy,
-#         aws_iam_role_policy_attachment.cni_policy,
-#         aws_iam_role_policy_attachment.registry_policy,
-#         kubernetes_config_map.aws_auth
-#     ]
+    depends_on = [
+        aws_iam_role_policy_attachment.default_node_nodePolicy,
+        aws_iam_role_policy_attachment.default_node_cniPolicy,
+        aws_iam_role_policy_attachment.default_node_registryPolicy,
+        kubernetes_config_map.aws_auth
+    ]
 
-#     tags = merge(
-#         local.common_tags,
-#         {
-#             Name = "${local.project_name}-default-node"
-#         }
-#     )
-# }
+    tags = merge(
+        local.common_tags,
+        {
+            Name = "${local.project_name}-default-node-group"
+        }
+    )
+}

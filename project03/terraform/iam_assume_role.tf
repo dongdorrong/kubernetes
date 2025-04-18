@@ -1,5 +1,5 @@
 # 테라폼 관리용 역할 (기존 역할을 테라폼으로 관리하기 위한 정의)
-resource "aws_iam_role" "terraform" {
+resource "aws_iam_role" "terraform_admin" {
     name = "terraform-assume-role"
     max_session_duration = 43200  # 12시간
 
@@ -24,7 +24,7 @@ resource "aws_iam_role" "terraform" {
 
 # 테라폼 역할에 관리자 권한 부여
 resource "aws_iam_role_policy_attachment" "terraform_admin" {
-    role       = aws_iam_role.terraform.name
+    role       = aws_iam_role.terraform_admin.name
     policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
 }
 
@@ -48,7 +48,6 @@ resource "aws_iam_role" "eks_admin" {
 
     tags = {
         ManagedBy = "terraform"
-        Purpose   = "EKS cluster management"
     }
 }
 
