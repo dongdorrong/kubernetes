@@ -1,9 +1,17 @@
-# 카펜터 설정 후 활성화할 애드온들
-/*
 # kube-proxy 애드온
 resource "aws_eks_addon" "kube_proxy" {
     cluster_name                = aws_eks_cluster.this.name
     addon_name                  = "kube-proxy"
+    resolve_conflicts_on_create = "OVERWRITE"
+    resolve_conflicts_on_update = "PRESERVE"
+
+    depends_on = [aws_eks_cluster.this]
+}
+
+# CoreDNS 애드온
+resource "aws_eks_addon" "coredns" {
+    cluster_name                = aws_eks_cluster.this.name
+    addon_name                  = "coredns"
     resolve_conflicts_on_create = "OVERWRITE"
     resolve_conflicts_on_update = "PRESERVE"
 
@@ -25,19 +33,6 @@ resource "aws_eks_addon" "vpc_cni" {
     ]
 }
 
-# CoreDNS 애드온
-resource "aws_eks_addon" "coredns" {
-    cluster_name                = aws_eks_cluster.this.name
-    addon_name                  = "coredns"
-    resolve_conflicts_on_create = "OVERWRITE"
-    resolve_conflicts_on_update = "PRESERVE"
-
-    depends_on = [
-        aws_eks_cluster.this,
-        aws_eks_addon.vpc_cni
-    ]
-}
-
 # EBS CSI 드라이버 애드온
 resource "aws_eks_addon" "ebs_csi" {
     cluster_name                = aws_eks_cluster.this.name
@@ -53,18 +48,20 @@ resource "aws_eks_addon" "ebs_csi" {
     ]
 }
 
-# EKS Pod Identity Agent 애드온
-resource "aws_eks_addon" "pod_identity" {
-    cluster_name                = aws_eks_cluster.this.name
-    addon_name                  = "eks-pod-identity-agent"
-    resolve_conflicts_on_create = "OVERWRITE"
-    resolve_conflicts_on_update = "PRESERVE"
+# # EKS Pod Identity Agent 애드온
+# - IRSA의 새로운 대안(2023년 말 출시)으로 OIDC 불필요, 성능 향상
+# - 현재는 IRSA가 안정적이므로 보류
+# resource "aws_eks_addon" "pod_identity" {
+#     cluster_name                = aws_eks_cluster.this.name
+#     addon_name                  = "eks-pod-identity-agent"
+#     resolve_conflicts_on_create = "OVERWRITE"
+#     resolve_conflicts_on_update = "PRESERVE"
 
-    depends_on = [
-        aws_eks_cluster.this,
-        aws_eks_addon.coredns
-    ]
-}
+#     depends_on = [
+#         aws_eks_cluster.this,
+#         aws_eks_addon.coredns
+#     ]
+# }
 
 # Metrics Server 설치
 resource "helm_release" "metrics_server" {
@@ -83,4 +80,3 @@ resource "helm_release" "metrics_server" {
         aws_eks_addon.coredns
     ]
 }
-*/ 
