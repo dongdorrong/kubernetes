@@ -28,7 +28,7 @@ resource "aws_iam_role_policy_attachment" "terraform_admin" {
     policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
 }
 
-# EKS 관리용 역할
+# EKS 관리자 IAM 역할
 resource "aws_iam_role" "eks_admin" {
     name = "eks-assume-role"
     max_session_duration = 43200  # 12시간
@@ -52,7 +52,7 @@ resource "aws_iam_role" "eks_admin" {
     }
 }
 
-# EKS 관리 역할에 필요한 권한 부여
+# EKS 관리자 정책
 resource "aws_iam_role_policy" "eks_admin" {
     name = "eks-admin-policy"
     role = aws_iam_role.eks_admin.id

@@ -1,51 +1,21 @@
-resource "aws_eks_cluster" "this" {
-    name = var.project_name
+# # EKS 클러스터 생성
+# resource "aws_eks_cluster" "this" {
+#     name     = local.cluster_name
+#     role_arn = aws_iam_role.cluster.arn
+#     version  = "1.32"
 
-    access_config {
-        authentication_mode = "CONFIG_MAP"
-        bootstrap_cluster_creator_admin_permissions = true
-    }
+#     vpc_config {
+#         subnet_ids              = local.subnet_ids
+#         endpoint_private_access = true
+#         endpoint_public_access  = true
+#         security_group_ids      = [ aws_security_group.additional.id ]
+#     }
 
-    role_arn = aws_iam_role.cluster.arn
-    version  = "1.32"
-
-    vpc_config {
-        subnet_ids              = concat(aws_subnet.public[*].id, aws_subnet.private[*].id)
-        security_group_ids      = [aws_security_group.additional.id]
-
-        # API 서버 엔드포인트 접근 제어
-        endpoint_private_access = true                    # VPC 내부에서 접근 가능
-        endpoint_public_access  = true                    # 퍼블릭 접근 허용
-        public_access_cidrs     = ["175.198.62.193/32"]   # 관리자 IP만 허용
-    }
-
-    depends_on = [
-        aws_iam_role.cluster,
-        aws_iam_role_policy_attachment.cluster_AmazonEKSClusterPolicy,
-        aws_security_group.additional,
-    ]
-}
-
-resource "aws_iam_role" "cluster" {
-    name               = "eksstudy-cluster-role"
-    assume_role_policy = jsonencode({
-        Version = "2012-10-17"
-        Statement = [
-            {
-                Action = "sts:AssumeRole"
-                Effect = "Allow"
-                Principal = {
-                    Service = "eks.amazonaws.com"
-                }
-            },
-        ]
-    })
-}
-
-resource "aws_iam_role_policy_attachment" "cluster_AmazonEKSClusterPolicy" {
-    policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
-    role       = aws_iam_role.cluster.name
-}
+#     depends_on = [
+#         aws_iam_role_policy_attachment.cluster_AmazonEKSClusterPolicy,
+#         aws_iam_role_policy_attachment.cluster_AmazonEKSServicePolicy
+#     ]
+# }
 
 # 추가 보안 그룹 (사용자 정의 규칙용)
 resource "aws_security_group" "additional" {
@@ -96,3 +66,39 @@ resource "kubernetes_config_map" "aws_auth" {
 
     depends_on = [aws_eks_cluster.this]
 }
+
+# # EKS 기본 노드 그룹
+# resource "aws_eks_node_group" "default" {
+#     cluster_name    = aws_eks_cluster.this.name
+#     node_group_name = "default"
+#     node_role_arn   = aws_iam_role.node.arn
+#     subnet_ids      = local.subnet_ids
+
+#     instance_types = ["t3.medium"]
+#     ami_type       = "AL2023_x86_64_STANDARD"
+#     capacity_type  = "SPOT"
+
+#     scaling_config {
+#         desired_size = 1
+#         min_size     = 1
+#         max_size     = 1
+#     }
+
+#     update_config {
+#         max_unavailable = 1
+#     }
+
+#     depends_on = [
+#         aws_iam_role_policy_attachment.node_policy,
+#         aws_iam_role_policy_attachment.cni_policy,
+#         aws_iam_role_policy_attachment.registry_policy,
+#         kubernetes_config_map.aws_auth
+#     ]
+
+#     tags = merge(
+#         local.common_tags,
+#         {
+#             Name = "${local.project_name}-default-node"
+#         }
+#     )
+# }
