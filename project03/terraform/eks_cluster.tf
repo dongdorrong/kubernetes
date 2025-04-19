@@ -41,6 +41,16 @@ resource "aws_security_group" "cluster_additional" {
     })
 }
 
+# EKS 관리자 AssumeRole에 대하여 data 리소스 선언
+data "aws_iam_role" "eks_admin" {
+    name = "eks-assume-role"
+}
+
+# Terraform 관리자 AssumeRole에 대하여 data 리소스 선언
+data "aws_iam_role" "terraform_admin" {
+    name = "terraform-assume-role"
+}
+
 # aws-auth ConfigMap 생성
 resource "kubernetes_config_map" "aws_auth" {
     metadata {
@@ -50,9 +60,15 @@ resource "kubernetes_config_map" "aws_auth" {
 
     data = {
         mapRoles = yamlencode([
+            # Terraform 관리자 역할
+            {
+                rolearn  = data.aws_iam_role.terraform_admin.arn
+                username = "admin"
+                groups   = [ "system:masters" ]
+            },
             # EKS 관리자 역할
             {
-                rolearn  = aws_iam_role.eks_admin.arn
+                rolearn  = data.aws_iam_role.eks_admin.arn
                 username = "admin"
                 groups   = [ "system:masters" ]
             },
