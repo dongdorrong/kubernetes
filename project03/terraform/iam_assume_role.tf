@@ -1,9 +1,9 @@
 # 테라폼 관리용 역할 (기존 역할을 테라폼으로 관리하기 위한 정의)
 resource "aws_iam_role" "terraform_admin" {
-    name = "terraform-assume-role"
+    name                 = "terraform-assume-role"
+    # name                 = "${local.project_name}-terraform-assume-role"
     max_session_duration = 43200  # 12시간
-
-    assume_role_policy = jsonencode({
+    assume_role_policy   = jsonencode({
         Version = "2012-10-17"
         Statement = [
             {
@@ -16,10 +16,6 @@ resource "aws_iam_role" "terraform_admin" {
             }
         ]
     })
-
-    tags = {
-        ManagedBy = "terraform"
-    }
 }
 
 # 테라폼 역할에 관리자 권한 부여
@@ -30,10 +26,10 @@ resource "aws_iam_role_policy_attachment" "terraform_admin" {
 
 # EKS 관리자 IAM 역할
 resource "aws_iam_role" "eks_admin" {
-    name = "eks-assume-role"
+    name                 = "eks-assume-role"
+    # name                 = "${local.project_name}-eks-assume-role"
     max_session_duration = 43200  # 12시간
-
-    assume_role_policy = jsonencode({
+    assume_role_policy   = jsonencode({
         Version = "2012-10-17"
         Statement = [
             {
@@ -45,10 +41,6 @@ resource "aws_iam_role" "eks_admin" {
             }
         ]
     })
-
-    tags = {
-        ManagedBy = "terraform"
-    }
 }
 
 # EKS 관리자 정책

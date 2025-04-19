@@ -1,6 +1,6 @@
 # EKS 클러스터 IAM 역할
 resource "aws_iam_role" "cluster" {
-    name               = "eksstudy-cluster-role"
+    name               = "${local.project_name}-cluster-role"
     assume_role_policy = jsonencode({
         Version = "2012-10-17"
         Statement = [
@@ -27,8 +27,7 @@ resource "aws_iam_role_policy_attachment" "cluster_AmazonEKSServicePolicy" {
 
 # 기본 노드 그룹 IAM 역할
 resource "aws_iam_role" "default_node_group" {
-    name = "eksstudy-node-role"
-
+    name               = "${local.project_name}-default-node-group-role"
     assume_role_policy = jsonencode({
         Version = "2012-10-17"
         Statement = [

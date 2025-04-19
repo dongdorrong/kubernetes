@@ -3,10 +3,11 @@ provider "aws" {
   region  = "ap-northeast-2"
   profile = "private"
 
-  # 프로필 사용 확인을 위한 기본 태그 설정
   default_tags {
     tags = {
-      ManagedBy = "terraform"
+      Project     = local.project_name
+      Environment = local.environment
+      ManagedBy   = "terraform"
     }
   }
 }
@@ -36,5 +37,18 @@ provider "helm" {
             args        = ["eks", "get-token", "--cluster-name", aws_eks_cluster.this.name, "--profile", "private"]
             command     = "aws"
         }
+    }
+}
+
+# Kubectl Provider 설정
+provider "kubectl" {
+    host                   = aws_eks_cluster.this.endpoint
+    cluster_ca_certificate = base64decode(aws_eks_cluster.this.certificate_authority[0].data)
+    load_config_file       = false
+
+    exec {
+        api_version = "client.authentication.k8s.io/v1beta1"
+        args        = ["eks", "get-token", "--cluster-name", aws_eks_cluster.this.name, "--profile", "private"]
+        command     = "aws"
     }
 }

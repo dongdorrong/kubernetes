@@ -12,3 +12,4 @@ spec:
   securityGroupSelectorTerms:
     - tags:
         karpenter.sh/discovery: "${CLUSTER_NAME}"
+        Name: ${NODE_NAME}

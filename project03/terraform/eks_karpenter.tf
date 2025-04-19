@@ -1,6 +1,6 @@
 # Karpenter 노드 인스턴스 프로파일
 resource "aws_iam_instance_profile" "karpenter" {
-    name = "eksstudy-karpenter-node-profile"
+    name = "karpenter-node-profile"
     role = aws_iam_role.karpenter_node.name
 }
 
@@ -15,8 +15,6 @@ resource "helm_release" "karpenter" {
     version    = "1.4.0"
 
     upgrade_install = true
-
-    timeout = 900 # 15분
 
     set {
         name  = "controller.resources.requests.cpu"
@@ -63,27 +61,29 @@ resource "helm_release" "karpenter" {
         aws_iam_role.karpenter_controller,
         aws_iam_role.karpenter_node,
         aws_iam_instance_profile.karpenter,
-        aws_iam_openid_connect_provider.this
+        aws_iam_openid_connect_provider.this,
+        aws_eks_node_group.default
     ]
 }
 
 # Karpenter NodePool 설정
 resource "kubectl_manifest" "karpenter_nodepool" {
     yaml_body = templatefile("${path.module}/manifests/karpenter-nodepool.yaml", {})
-
     depends_on = [
-        helm_release.karpenter
+        helm_release.karpenter,
+        kubernetes_config_map.aws_auth
     ]
 }
 
 # Karpenter NodeClass 설정
 resource "kubectl_manifest" "karpenter_nodeclass" {
     yaml_body = templatefile("${path.module}/manifests/karpenter-nodeclass.yaml", {
-        CLUSTER_NAME = aws_eks_cluster.this.name
+        CLUSTER_NAME  = aws_eks_cluster.this.name
         ALIAS_VERSION = "latest"
+        NODE_NAME     = local.node_name_format
     })
-
     depends_on = [
-        helm_release.karpenter
+        helm_release.karpenter,
+        kubernetes_config_map.aws_auth
     ]
 }
