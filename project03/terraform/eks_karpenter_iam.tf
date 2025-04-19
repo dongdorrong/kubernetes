@@ -1,7 +1,6 @@
 # Karpenter 노드 IAM 역할
 resource "aws_iam_role" "karpenter_node" {
-    name = "karpenter-node-role"
-
+    name               = "${local.project_name}-karpenter-node-role"
     assume_role_policy = jsonencode({
         Version = "2012-10-17"
         Statement = [
@@ -39,8 +38,7 @@ resource "aws_iam_role_policy_attachment" "karpenter_node_ssm" {
 
 # Karpenter 컨트롤러 IAM 역할
 resource "aws_iam_role" "karpenter_controller" {
-    name = "karpenter-controller-role"
-
+    name               = "${local.project_name}-karpenter-controller-role"
     assume_role_policy = jsonencode({
         Version = "2012-10-17"
         Statement = [
@@ -64,8 +62,7 @@ resource "aws_iam_role" "karpenter_controller" {
 # Karpenter 컨트롤러 IAM 정책
 resource "aws_iam_role_policy" "karpenter_controller" {
     name = "karpenter-policy"
-    role = aws_iam_role.karpenter_controller.id
-
+    role   = aws_iam_role.karpenter_controller.id
     policy = jsonencode({
         Version = "2012-10-17"
         Statement = [

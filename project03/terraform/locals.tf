@@ -1,27 +1,25 @@
 locals {
   # 프로젝트 관련 설정
-  project_name = var.project_name
-  environment = var.environment
-
-  # 클러스터 관련 설정
-  cluster_name    = "eks-${var.environment}-${var.project_name}"
+  project_name = "eksstudy"
+  environment  = "dev"
+  owner        = "252462902626"
 
   # VPC 관련 설정
-  vpc_cidr            = var.vpc_cidr
-  azs                 = var.azs
+  vpc_cidr             = "10.0.0.0/16"
+  azs                  = ["ap-northeast-2a", "ap-northeast-2c"]
+  public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24"]
+  private_subnet_cidrs = ["10.0.10.0/24", "10.0.20.0/24"]
+  subnet_ids           = concat(aws_subnet.public[*].id, aws_subnet.private[*].id)
 
-  public_subnet_cidrs  = var.public_subnet_cidrs
-  private_subnet_cidrs = var.private_subnet_cidrs
+  # 보안 설정
+  admin_cidrs = ["175.198.62.193/32"]  # EKS API 접근 허용 IP
 
-  # VPC 서브넷 ID 목록
-  subnet_ids = concat(aws_subnet.public[*].id, aws_subnet.private[*].id)
+  # 클러스터 관련 설정
+  cluster_name    = local.project_name
 
-  # 공통 태그
-  common_tags = {
-    Environment = var.environment
-    Project     = var.project_name
-    Terraform   = "true"
-    Owner       = var.owner
-    ManagedBy   = "terraform"
-  }
+  # EKS 워커 노드 이름 형식
+  node_name_format = "${local.cluster_name}-node"
+  node_tags        = merge({
+    Name = local.node_name_format
+  })
 } 

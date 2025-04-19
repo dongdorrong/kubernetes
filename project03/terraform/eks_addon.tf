@@ -63,20 +63,12 @@ resource "aws_eks_addon" "ebs_csi" {
 #     ]
 # }
 
-# Metrics Server 설치
-resource "helm_release" "metrics_server" {
-    name       = "metrics-server"
-    repository = "https://kubernetes-sigs.github.io/metrics-server/"
-    chart      = "metrics-server"
-    namespace  = "kube-system"
+# Metrics Server  애드온
+resource "aws_eks_addon" "metrics_server" {
+    cluster_name                = aws_eks_cluster.this.name
+    addon_name                  = "metrics-server"
+    resolve_conflicts_on_create = "OVERWRITE"
+    resolve_conflicts_on_update = "PRESERVE"
 
-    set {
-        name  = "args[0]"
-        value = "--kubelet-insecure-tls"
-    }
-
-    depends_on = [
-        aws_eks_cluster.this,
-        aws_eks_addon.coredns
-    ]
+    depends_on = [aws_eks_cluster.this]
 }
