@@ -81,7 +81,15 @@ resource "aws_iam_role_policy" "karpenter_controller" {
                     "ec2:DescribeInstanceTypeOfferings",
                     "ec2:DescribeAvailabilityZones",
                     "ssm:GetParameter",
-                    "eks:DescribeCluster"
+                    "eks:DescribeCluster",
+                    "ec2:DescribeImages",
+                    "iam:GetInstanceProfile",
+                    "iam:CreateInstanceProfile",
+                    "iam:TagInstanceProfile",
+                    "iam:AddRoleToInstanceProfile",
+                    "pricing:GetProducts",
+                    "ec2:DeleteLaunchTemplate",
+                    "ec2:DescribeSpotPriceHistory"
                 ]
                 Effect   = "Allow"
                 Resource = "*"
