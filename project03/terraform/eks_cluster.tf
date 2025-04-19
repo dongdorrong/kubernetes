@@ -56,8 +56,15 @@ resource "kubernetes_config_map" "aws_auth" {
                 username = "admin"
                 groups   = [ "system:masters" ]
             },
+            # 기본 노드 그룹 역할
             {
                 rolearn  = aws_iam_role.default_node_group.arn
+                username = "system:node:{{EC2PrivateDNSName}}"
+                groups   = [ "system:bootstrappers", "system:nodes" ]
+            },
+            # Karpenter 노드 역할
+            {
+                rolearn  = aws_iam_role.karpenter_node.arn
                 username = "system:node:{{EC2PrivateDNSName}}"
                 groups   = [ "system:bootstrappers", "system:nodes" ]
             }
@@ -154,6 +161,7 @@ resource "aws_security_group" "worker_default" {
 
     tags = merge({
         Name = "${local.project_name}-worker-node-sg"
+        "karpenter.sh/discovery" = local.cluster_name
     })
 }
 

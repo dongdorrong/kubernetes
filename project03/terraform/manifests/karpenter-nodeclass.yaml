@@ -3,7 +3,7 @@ kind: EC2NodeClass
 metadata:
   name: default
 spec:
-  role: "KarpenterNodeRole-${CLUSTER_NAME}"
+  role: "${CLUSTER_NAME}-karpenter-node-role"
   amiSelectorTerms:
     - alias: "al2023@${ALIAS_VERSION}"
   subnetSelectorTerms:
@@ -11,5 +11,7 @@ spec:
         karpenter.sh/discovery: "${CLUSTER_NAME}"
   securityGroupSelectorTerms:
     - tags:
+        Name: "${CLUSTER_NAME}-worker-node-sg"
         karpenter.sh/discovery: "${CLUSTER_NAME}"
-        Name: ${NODE_NAME}
+  tags:
+    Name: "${NODE_NAME}"
