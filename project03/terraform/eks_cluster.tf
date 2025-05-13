@@ -41,16 +41,6 @@ resource "aws_security_group" "cluster_additional" {
     })
 }
 
-# EKS 관리자 AssumeRole에 대하여 data 리소스 선언
-data "aws_iam_role" "eks_admin" {
-    name = "eks-assume-role"
-}
-
-# Terraform 관리자 AssumeRole에 대하여 data 리소스 선언
-data "aws_iam_role" "terraform_admin" {
-    name = "terraform-assume-role"
-}
-
 # aws-auth ConfigMap 생성
 resource "kubernetes_config_map" "aws_auth" {
     metadata {
@@ -78,12 +68,13 @@ resource "kubernetes_config_map" "aws_auth" {
                 username = "system:node:{{EC2PrivateDNSName}}"
                 groups   = [ "system:bootstrappers", "system:nodes" ]
             },
-            # Karpenter 노드 역할
-            {
-                rolearn  = aws_iam_role.karpenter_node.arn
-                username = "system:node:{{EC2PrivateDNSName}}"
-                groups   = [ "system:bootstrappers", "system:nodes" ]
-            }
+            # 2025-05-13 Karpenter 신규 배포할 때 추가하도록 변경
+            # # Karpenter 노드 역할
+            # {
+            #     rolearn  = aws_iam_role.karpenter_node.arn
+            #     username = "system:node:{{EC2PrivateDNSName}}"
+            #     groups   = [ "system:bootstrappers", "system:nodes" ]
+            # }
         ])
     }
 
@@ -145,7 +136,7 @@ resource "aws_launch_template" "default" {
     }
 }
 
-# 워커 노드 보안 그룹
+# 기본 노드 보안 그룹
 resource "aws_security_group" "worker_default" {
     vpc_id      = aws_vpc.main.id
 

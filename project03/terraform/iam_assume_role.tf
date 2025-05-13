@@ -69,4 +69,14 @@
 # }
 
 # AWS 계정 ID를 가져오기 위한 데이터 소스
-data "aws_caller_identity" "current" {} 
+data "aws_caller_identity" "current" {}
+
+# EKS 관리자 AssumeRole에 대하여 data 리소스 선언
+data "aws_iam_role" "eks_admin" {
+    name = "eks-assume-role"
+}
+
+# Terraform 관리자 AssumeRole에 대하여 data 리소스 선언
+data "aws_iam_role" "terraform_admin" {
+    name = "terraform-assume-role"
+}

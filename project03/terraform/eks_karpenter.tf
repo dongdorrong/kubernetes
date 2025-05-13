@@ -62,8 +62,47 @@ resource "helm_release" "karpenter" {
         aws_iam_role.karpenter_node,
         aws_iam_instance_profile.karpenter,
         aws_iam_openid_connect_provider.this,
-        aws_eks_node_group.default
+        aws_eks_node_group.default,
+        kubernetes_config_map_v1_data.aws_auth_karpenter_update  # Karpenter 노드 역할 추가 후 Helm 설치
     ]
+}
+
+# Karpenter 노드 역할을 aws-auth ConfigMap에 추가
+resource "kubernetes_config_map_v1_data" "aws_auth_karpenter_update" {
+    metadata {
+        name      = "aws-auth"
+        namespace = "kube-system"
+    }
+    
+    data = {
+        mapRoles = yamlencode(
+            concat(
+                yamldecode(data.kubernetes_config_map.aws_auth_latest.data.mapRoles),
+                [
+                    {
+                        rolearn  = aws_iam_role.karpenter_node.arn
+                        username = "system:node:{{EC2PrivateDNSName}}"
+                        groups   = ["system:bootstrappers", "system:nodes"]
+                    }
+                ]
+            )
+        )
+    }
+    
+    depends_on = [
+        aws_iam_role.karpenter_node,
+        data.kubernetes_config_map.aws_auth_latest
+    ]
+    
+    force = true  # 기존 ConfigMap 덮어쓰기
+}
+
+# 기존 aws-auth ConfigMap의 역할 정보를 읽어와 Karpenter 역할 추가 시 기존 정보를 보존함
+data "kubernetes_config_map" "aws_auth_latest" {
+    metadata {
+        name      = "aws-auth"
+        namespace = "kube-system"
+    }
 }
 
 # Karpenter NodePool 설정
