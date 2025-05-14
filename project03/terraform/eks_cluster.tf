@@ -68,13 +68,11 @@ resource "kubernetes_config_map" "aws_auth" {
                 username = "system:node:{{EC2PrivateDNSName}}"
                 groups   = [ "system:bootstrappers", "system:nodes" ]
             },
-            # 2025-05-13 Karpenter 신규 배포할 때 추가하도록 변경
-            # # Karpenter 노드 역할
-            # {
-            #     rolearn  = aws_iam_role.karpenter_node.arn
-            #     username = "system:node:{{EC2PrivateDNSName}}"
-            #     groups   = [ "system:bootstrappers", "system:nodes" ]
-            # }
+            {
+                rolearn  = aws_iam_role.karpenter_node.arn
+                username = "system:node:{{EC2PrivateDNSName}}"
+                groups   = [ "system:bootstrappers", "system:nodes" ]
+            }
         ])
     }
 
