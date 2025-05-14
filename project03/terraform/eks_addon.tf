@@ -119,3 +119,12 @@ resource "helm_release" "aws_load_balancer_controller" {
         kubernetes_service_account.aws_load_balancer_controller
     ]
 }
+
+# StorageClass 생성
+resource "kubernetes_manifest" "storageclass" {
+    manifest = yamldecode(file("${path.module}/manifests/storageclass.yaml"))
+    depends_on = [
+        aws_eks_cluster.this,
+        aws_eks_addon.ebs_csi
+    ]
+}
