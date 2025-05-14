@@ -1,4 +1,4 @@
-# Istio Helm 차트 설치
+# Istio Helm 차트 설치 (Ambient 모드)
 # https://istio.io/latest/docs/ambient/install/helm/
 
 # istio-base 설치
