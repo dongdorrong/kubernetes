@@ -59,7 +59,7 @@ resource "aws_iam_role_policy_attachment" "vpc_cni" {
 # AWS Load Balancer Controller를 위한 IRSA
 resource "aws_iam_policy" "aws_load_balancer_controller" {
     name = "${local.project_name}-aws-load-balancer-controller-policy"
-    policy = file("${path.module}/policies/aws-load-balancer-controller-policy.json")
+    policy = file("${path.module}/manifests/aws-load-balancer-controller-policy.json")
 }
 
 resource "aws_iam_role" "aws_load_balancer_controller" {
