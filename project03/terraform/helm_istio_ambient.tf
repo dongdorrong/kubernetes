@@ -12,10 +12,11 @@
 
 #     upgrade_install = true
 
-#     set {
-#         name  = "defaultRevision"
-#         value = "default"
-#     }
+#     values = [
+#         yamlencode({
+#             defaultRevision = "default"
+#         })
+#     ]
 # }
 
 # # Gateway API CRD 설치
@@ -47,10 +48,11 @@
 
 #     upgrade_install = true
 
-#     set {
-#         name  = "profile"
-#         value = "ambient"
-#     }
+#     values = [
+#         yamlencode({
+#             profile = "ambient"
+#         })
+#     ]
 
 #     depends_on = [ helm_release.istio_base, kubectl_manifest.gateway_api_crds ]
 # }
@@ -66,10 +68,11 @@
 
 #     upgrade_install = true
 
-#     set {
-#         name  = "profile"
-#         value = "ambient"
-#     }
+#     values = [
+#         yamlencode({
+#             profile = "ambient"
+#         })
+#     ]
 
 #     depends_on = [ helm_release.istio_base, kubectl_manifest.gateway_api_crds, helm_release.istiod ]
 # }
