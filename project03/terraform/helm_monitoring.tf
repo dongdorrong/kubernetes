@@ -207,11 +207,11 @@ resource "helm_release" "alloy" {
                     enabled = false
                 }
 
-                # 로그 수집 기능 활성화
-                mounts = {
-                    varlog           = true
-                    dockercontainers = true
-                }
+                # # 로그 수집 기능 활성화
+                # mounts = {
+                #     varlog           = true
+                #     dockercontainers = true
+                # }
             }
 
             extraObjects = []
