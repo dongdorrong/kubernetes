@@ -105,7 +105,6 @@ resource "kubectl_manifest" "gateway" {
     depends_on = [
         # 2025-05-13 인증서 생성 완료하여 주석 처리
         # data.aws_acm_certificate_validation.cert,
-        helm_release.aws_load_balancer_controller,
         kubectl_manifest.gateway_api_crds
     ]
 }
