@@ -1,7 +1,7 @@
 apiVersion: gateway.networking.k8s.io/v1beta1
 kind: Gateway
 metadata:
-  name: alb-gateway
+  name: gateway
   namespace: istio-system
   annotations:
     service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
