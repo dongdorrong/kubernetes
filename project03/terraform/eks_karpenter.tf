@@ -82,9 +82,11 @@ resource "kubectl_manifest" "karpenter_nodeclass" {
         CLUSTER_NAME  = aws_eks_cluster.this.name
         ALIAS_VERSION = "latest"
         NODE_NAME     = local.node_name_format
+        KMS_KEY_ARN   = aws_kms_key.karpenter.arn
     })
     depends_on = [
         helm_release.karpenter,
-        kubernetes_config_map.aws_auth
+        kubernetes_config_map.aws_auth,
+        aws_kms_key.karpenter
     ]
 }
