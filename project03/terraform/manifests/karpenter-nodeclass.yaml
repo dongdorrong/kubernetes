@@ -15,3 +15,10 @@ spec:
         karpenter.sh/discovery: "${CLUSTER_NAME}"
   tags:
     Name: "${NODE_NAME}"
+  blockDeviceMappings:
+    - deviceName: /dev/xvda
+      ebs:
+        volumeSize: 100Gi
+        volumeType: gp3
+        encrypted: true
+        kmsKeyId: "${KMS_KEY_ARN}"
