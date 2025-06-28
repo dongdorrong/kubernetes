@@ -1,0 +1,153 @@
+---
+# CPU 요청 필수 정책
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-cpu-requests
+  annotations:
+    policies.kyverno.io/title: Require CPU Requests
+    policies.kyverno.io/category: Resource Management
+    policies.kyverno.io/description: >-
+      모든 컨테이너에 CPU 요청이 설정되어야 합니다.
+spec:
+  validationFailureAction: enforce
+  background: true
+  rules:
+    - name: check-cpu-requests
+      match:
+        any:
+        - resources:
+            kinds:
+            - Pod
+      validate:
+        message: "CPU 요청이 설정되어야 합니다"
+        pattern:
+          spec:
+            containers:
+            - name: "*"
+              resources:
+                requests:
+                  cpu: "?*"
+
+---
+# CPU 제한 필수 정책
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-cpu-limits
+  annotations:
+    policies.kyverno.io/title: Require CPU Limits
+    policies.kyverno.io/category: Resource Management
+    policies.kyverno.io/description: >-
+      모든 컨테이너에 CPU 제한이 설정되어야 합니다.
+spec:
+  validationFailureAction: enforce
+  background: true
+  rules:
+    - name: check-cpu-limits
+      match:
+        any:
+        - resources:
+            kinds:
+            - Pod
+      validate:
+        message: "CPU 제한이 설정되어야 합니다"
+        pattern:
+          spec:
+            containers:
+            - name: "*"
+              resources:
+                limits:
+                  cpu: "?*"
+
+---
+# 최대 CPU 제한 정책
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: limit-cpu-usage
+  annotations:
+    policies.kyverno.io/title: Limit CPU Usage
+    policies.kyverno.io/category: Resource Management
+    policies.kyverno.io/description: >-
+      CPU 제한이 500m을 초과할 수 없습니다.
+spec:
+  validationFailureAction: enforce
+  background: true
+  rules:
+    - name: check-cpu-limit-range
+      match:
+        any:
+        - resources:
+            kinds:
+            - Pod
+      validate:
+        message: "CPU 제한은 500m을 초과할 수 없습니다"
+        deny:
+          conditions:
+            any:
+            - key: "{{ request.object.spec.containers[?contains(@.resources.limits.cpu, 'm')].resources.limits.cpu | [0] | to_number(@) }}"
+              operator: GreaterThan
+              value: 500
+
+---
+# CPU 요청/제한 비율 정책
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: cpu-request-limit-ratio
+  annotations:
+    policies.kyverno.io/title: CPU Request Limit Ratio
+    policies.kyverno.io/category: Resource Management
+    policies.kyverno.io/description: >-
+      CPU 요청은 CPU 제한의 50% 이상이어야 합니다.
+spec:
+  validationFailureAction: enforce
+  background: true
+  rules:
+    - name: check-cpu-ratio
+      match:
+        any:
+        - resources:
+            kinds:
+            - Pod
+      validate:
+        message: "CPU 요청은 CPU 제한의 50% 이상이어야 합니다"
+        deny:
+          conditions:
+            any:
+            - key: "{{ request.object.spec.containers[0].resources.requests.cpu | to_number(@) }}"
+              operator: LessThan
+              value: "{{ request.object.spec.containers[0].resources.limits.cpu | to_number(@) | multiply(@, `0.5`) }}"
+
+---
+# 기본 리소스 추가 정책 (Mutate)
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: add-default-resources
+  annotations:
+    policies.kyverno.io/title: Add Default Resources
+    policies.kyverno.io/category: Resource Management
+    policies.kyverno.io/description: >-
+      리소스가 설정되지 않은 컨테이너에 기본 리소스를 추가합니다.
+spec:
+  rules:
+    - name: add-default-cpu-requests
+      match:
+        any:
+        - resources:
+            kinds:
+            - Pod
+      mutate:
+        patchStrategicMerge:
+          spec:
+            containers:
+            - (name): "*"
+              resources:
+                requests:
+                  +(cpu): "100m"
+                  +(memory): "128Mi"
+                limits:
+                  +(cpu): "200m"
+                  +(memory): "256Mi" 
