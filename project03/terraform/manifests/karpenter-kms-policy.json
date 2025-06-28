@@ -1,0 +1,20 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "Allow Karpenter Node Role to use the key",
+        "Effect": "Allow",
+        "Principal": {
+          "AWS": "arn:aws:iam::${OWNER}:role/${KARPENTER_NODE_ROLE}"
+        },
+        "Action": [
+          "kms:Encrypt",
+          "kms:Decrypt",
+          "kms:ReEncrypt*",
+          "kms:GenerateDataKey*",
+          "kms:DescribeKey"
+        ],
+        "Resource": "*"
+      }
+    ]
+  }

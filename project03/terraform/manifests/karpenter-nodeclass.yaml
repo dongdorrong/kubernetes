@@ -1,0 +1,24 @@
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: default
+spec:
+  role: "${CLUSTER_NAME}-karpenter-node-role"
+  amiSelectorTerms:
+    - alias: "al2023@${ALIAS_VERSION}"
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "${CLUSTER_NAME}"
+  securityGroupSelectorTerms:
+    - tags:
+        Name: "${CLUSTER_NAME}-worker-node-sg"
+        karpenter.sh/discovery: "${CLUSTER_NAME}"
+  tags:
+    Name: "${NODE_NAME}"
+  blockDeviceMappings:
+    - deviceName: /dev/xvda
+      ebs:
+        volumeSize: 100Gi
+        volumeType: gp3
+        encrypted: true
+        kmsKeyId: "${KMS_KEY_ARN}"
