@@ -67,3 +67,54 @@ resource "helm_release" "kubecost" {
         aws_iam_role_policy_attachment.kubecost
     ]
 }
+
+# External-dns Helm 차트 설치
+# https://kubernetes-sigs.github.io/external-dns/v0.15.0/docs/tutorials/aws/
+
+# 네임스페이스 생성
+resource "kubernetes_namespace" "external_dns" {
+    metadata {
+        name = "external-dns"
+    }
+}
+
+resource "helm_release" "external_dns" {
+    name            = "external-dns"
+    repository      = "https://kubernetes-sigs.github.io/external-dns/"
+    chart           = "external-dns"
+    namespace       = kubernetes_namespace.external_dns.metadata[0].name
+    upgrade_install = true
+
+    values = [
+        yamlencode({
+            # 서비스 계정 설정
+            serviceAccount = {
+                create = false
+                name   = kubernetes_service_account.external_dns.metadata[0].name
+            }
+            
+            # AWS 프로바이더 설정 (새로운 방식)
+            provider = {
+                name = "aws"
+            }
+            
+            # AWS 리전 설정
+            aws = {
+                region = "ap-northeast-2"
+            }
+            
+            # 도메인 필터 설정 (특정 도메인만 관리)
+            domainFilters = ["dongdorrong.com"]
+            
+            # 정책 설정
+            policy = "sync"  # 레코드 생성/업데이트/삭제 모두 허용
+        })
+    ]
+
+    depends_on = [
+        aws_eks_cluster.this,
+        aws_eks_node_group.default,
+        kubernetes_service_account.external_dns,
+        aws_iam_role_policy_attachment.external_dns
+    ]
+}
