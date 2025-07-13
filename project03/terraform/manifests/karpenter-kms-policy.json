@@ -2,10 +2,26 @@
     "Version": "2012-10-17",
     "Statement": [
       {
-        "Sid": "Allow Karpenter Node Role to use the key",
+        "Sid": "Enable full administrative access",
         "Effect": "Allow",
         "Principal": {
-          "AWS": "arn:aws:iam::${OWNER}:role/${KARPENTER_NODE_ROLE}"
+          "AWS": [
+            "arn:aws:iam::${OWNER}:role/${TERRAFORM_ADMIN_ROLE}",
+            "arn:aws:iam::${OWNER}:role/${EKS_ADMIN_ROLE}"
+          ]
+        },
+        "Action": "kms:*",
+        "Resource": "*"
+      },
+      {
+        "Sid": "Allow EKS and Karpenter services to use the key",
+        "Effect": "Allow",
+        "Principal": {
+          "AWS": [
+            "arn:aws:iam::${OWNER}:role/${CLUSTER_ROLE}",
+            "arn:aws:iam::${OWNER}:role/${KARPENTER_CONTROLLER_ROLE}",
+            "arn:aws:iam::${OWNER}:role/${KARPENTER_NODE_ROLE}"
+          ]
         },
         "Action": [
           "kms:Encrypt",
