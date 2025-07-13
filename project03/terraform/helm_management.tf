@@ -9,16 +9,15 @@ resource "kubernetes_namespace" "kubecost" {
 }
 
 resource "helm_release" "kubecost" {
-    name       = "kubecost"
-    repository = "https://kubecost.github.io/cost-analyzer/"
-    chart      = "cost-analyzer"
-    namespace  = kubernetes_namespace.kubecost.metadata[0].name
+    name            = "kubecost"
+    repository      = "https://kubecost.github.io/cost-analyzer/"
+    chart           = "cost-analyzer"
+    namespace       = kubernetes_namespace.kubecost.metadata[0].name
+    upgrade_install = true
 
     # Version compatibility: 2.3(k8s 1.21-1.30) | 2.4(k8s 1.22-1.31) | 2.5+(k8s 1.22-1.32+)
     # Current k8s version: 1.30+ → 2.8.0 compatible
     version    = "2.8.0"
-
-    upgrade_install = true
 
     # 무료 버전 사용
     values = [
