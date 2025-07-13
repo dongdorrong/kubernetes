@@ -8,6 +8,17 @@ resource "kubernetes_namespace" "kubecost" {
     }
 }
 
+# Kubecost 서비스 계정 생성
+resource "kubernetes_service_account" "kubecost" {
+    metadata {
+        name      = "kubecost-cost-analyzer"
+        namespace = kubernetes_namespace.kubecost.metadata[0].name
+        annotations = {
+            "eks.amazonaws.com/role-arn" = aws_iam_role.kubecost.arn
+        }
+    }
+}
+
 resource "helm_release" "kubecost" {
     name            = "kubecost"
     repository      = "https://kubecost.github.io/cost-analyzer/"
@@ -22,6 +33,13 @@ resource "helm_release" "kubecost" {
     # 무료 버전 사용
     values = [
         yamlencode({
+            # 서비스 계정 설정
+            # 매뉴얼 대로 설치하면, 선언이 안 되어 있고 오류 발생함
+            serviceAccount = {
+                create = false
+                name   = kubernetes_service_account.kubecost.metadata[0].name
+            }
+            
             kubecostProductConfigs = {
                 productKey = {
                     enabled = false
@@ -44,6 +62,8 @@ resource "helm_release" "kubecost" {
 
     depends_on = [
         aws_eks_cluster.this,
-        aws_eks_node_group.default
+        aws_eks_node_group.default,
+        kubernetes_service_account.kubecost,
+        aws_iam_role_policy_attachment.kubecost
     ]
 }
