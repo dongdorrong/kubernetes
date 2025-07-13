@@ -7,10 +7,11 @@ resource "kubernetes_namespace" "monitoring" {
 
 # Prometheus Helm 차트 설치
 resource "helm_release" "prometheus" {
-    name       = "prometheus"
-    repository = "https://prometheus-community.github.io/helm-charts"
-    chart      = "prometheus"
-    namespace  = kubernetes_namespace.monitoring.metadata[0].name
+    name             = "prometheus"
+    repository       = "https://prometheus-community.github.io/helm-charts"
+    chart            = "prometheus"
+    namespace        = kubernetes_namespace.monitoring.metadata[0].name
+    upgrade_install  = true
 
     values = [
         yamlencode({
@@ -35,15 +36,18 @@ resource "helm_release" "prometheus" {
         })
     ]
 
-    depends_on = [ kubernetes_namespace.monitoring ]
+    depends_on = [ 
+        kubernetes_namespace.monitoring 
+    ]
 }
 
 # Grafana Helm 차트 설치
 resource "helm_release" "grafana" {
-    name       = "grafana"
-    repository = "https://grafana.github.io/helm-charts"
-    chart      = "grafana"
-    namespace  = kubernetes_namespace.monitoring.metadata[0].name
+    name            = "grafana"
+    repository      = "https://grafana.github.io/helm-charts"
+    chart           = "grafana"
+    namespace       = kubernetes_namespace.monitoring.metadata[0].name
+    upgrade_install = true
 
     values = [
         yamlencode({
@@ -90,10 +94,11 @@ resource "helm_release" "grafana" {
 
 # Loki monolithic Helm 차트 설치 (Single Replica)
 resource "helm_release" "loki" {
-    name       = "loki"
-    repository = "https://grafana.github.io/helm-charts"
-    chart      = "loki"
-    namespace  = kubernetes_namespace.monitoring.metadata[0].name
+    name            = "loki"
+    repository      = "https://grafana.github.io/helm-charts"
+    chart           = "loki"
+    namespace       = kubernetes_namespace.monitoring.metadata[0].name
+    upgrade_install = true
 
     values = [
         yamlencode({
@@ -187,10 +192,11 @@ resource "helm_release" "loki" {
 
 # Grafana Alloy Helm 차트 설치
 resource "helm_release" "alloy" {
-    name       = "alloy"
-    repository = "https://grafana.github.io/helm-charts"
-    chart      = "alloy"
-    namespace  = kubernetes_namespace.monitoring.metadata[0].name
+    name            = "alloy"
+    repository      = "https://grafana.github.io/helm-charts"
+    chart           = "alloy"
+    namespace       = kubernetes_namespace.monitoring.metadata[0].name
+    upgrade_install = true
 
     values = [
         yamlencode({
@@ -208,6 +214,7 @@ resource "helm_release" "alloy" {
                 }
 
                 # # 로그 수집 기능 활성화
+                # # 2025-07-13 마운트 하지 않아도 로그 수집 가능
                 # mounts = {
                 #     varlog           = true
                 #     dockercontainers = true

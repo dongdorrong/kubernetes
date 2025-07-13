@@ -1,21 +1,29 @@
 # Istio Helm 차트 설치 (Ambient 모드)
 # https://istio.io/latest/docs/ambient/install/helm/
 
+# 네임스페이스 생성
+resource "kubernetes_namespace" "istio_system" {
+    metadata {
+        name = "istio-system"
+    }
+}
+
 # istio-base 설치
 resource "helm_release" "istio_base" {
-    namespace        = "istio-system"
-    create_namespace = true
-
-    name       = "istio-base"
-    repository = "https://istio-release.storage.googleapis.com/charts"
-    chart      = "base"
-
+    name            = "istio-base"
+    repository      = "https://istio-release.storage.googleapis.com/charts"
+    chart           = "base"
+    namespace       = kubernetes_namespace.istio_system.metadata[0].name
     upgrade_install = true
 
     values = [
         yamlencode({
             defaultRevision = "default"
         })
+    ]
+
+    depends_on = [
+        helm_release.aws_load_balancer_controller
     ]
 }
 
@@ -33,19 +41,17 @@ resource "kubectl_manifest" "gateway_api_crds" {
     yaml_body = each.value
 
     depends_on = [
+        helm_release.aws_load_balancer_controller,
         helm_release.istio_base
     ]
 }
 
 # istiod 설치
 resource "helm_release" "istiod" {
-    namespace        = "istio-system"
-    create_namespace = true
-
-    name       = "istiod"
-    repository = "https://istio-release.storage.googleapis.com/charts"
-    chart      = "istiod"
-
+    name            = "istiod"
+    repository      = "https://istio-release.storage.googleapis.com/charts"
+    chart           = "istiod"
+    namespace       = kubernetes_namespace.istio_system.metadata[0].name
     upgrade_install = true
 
     values = [
@@ -54,18 +60,19 @@ resource "helm_release" "istiod" {
         })
     ]
 
-    depends_on = [ helm_release.aws_load_balancer_controller, helm_release.istio_base, kubectl_manifest.gateway_api_crds ]
+    depends_on = [ 
+        helm_release.aws_load_balancer_controller, 
+        helm_release.istio_base,
+        kubectl_manifest.gateway_api_crds 
+    ]
 }
 
 # istio-cni 설치
 resource "helm_release" "istio_cni" {
-    namespace        = "istio-system"
-    create_namespace = true
-
-    name       = "istio-cni"
-    repository = "https://istio-release.storage.googleapis.com/charts"
-    chart      = "cni"
-
+    name            = "istio-cni"
+    repository      = "https://istio-release.storage.googleapis.com/charts"
+    chart           = "cni"
+    namespace       = kubernetes_namespace.istio_system.metadata[0].name
     upgrade_install = true
 
     values = [
@@ -74,21 +81,24 @@ resource "helm_release" "istio_cni" {
         })
     ]
 
-    depends_on = [ helm_release.aws_load_balancer_controller, helm_release.istio_base, kubectl_manifest.gateway_api_crds, helm_release.istiod ]
+    depends_on = [ 
+        helm_release.aws_load_balancer_controller, 
+        helm_release.istio_base, 
+        kubectl_manifest.gateway_api_crds, 
+        helm_release.istiod 
+    ]
 }
 
 # ztunnel 설치
 resource "helm_release" "ztunnel" {
-    namespace        = "istio-system"
-    create_namespace = true
-
-    name       = "ztunnel"
-    repository = "https://istio-release.storage.googleapis.com/charts"
-    chart      = "ztunnel "
-
+    name            = "ztunnel"
+    repository      = "https://istio-release.storage.googleapis.com/charts"
+    chart           = "ztunnel"
+    namespace       = kubernetes_namespace.istio_system.metadata[0].name
     upgrade_install = true
 
-    depends_on = [ 
+    depends_on = [
+        helm_release.aws_load_balancer_controller,
         helm_release.istio_base,
         kubectl_manifest.gateway_api_crds, 
         helm_release.istiod,

@@ -1,15 +1,25 @@
 # # Istio Helm 차트 설치 (Sidecar 모드)
 # # https://istio.io/latest/docs/setup/install/helm/
 
+# # 네임스페이스 생성
+# resource "kubernetes_namespace" "istio_system" {
+#     metadata {
+#         name = "istio-system"
+#     }
+# }
+
+# resource "kubernetes_namespace" "istio_ingress" {
+#     metadata {
+#         name = "istio-ingress"
+#     }
+# }
+
 # # istio-base 설치
 # resource "helm_release" "istio_base" {
-#     namespace        = "istio-system"
-#     create_namespace = true
-
-#     name       = "istio-base"
-#     repository = "https://istio-release.storage.googleapis.com/charts"
-#     chart      = "base"
-
+#     name            = "istio-base"
+#     repository      = "https://istio-release.storage.googleapis.com/charts"
+#     chart           = "base"
+#     namespace       = kubernetes_namespace.istio_system.metadata[0].name
 #     upgrade_install = true
 
 #     values = [
@@ -17,31 +27,32 @@
 #             defaultRevision = "default"
 #         })
 #     ]
+
+#     depends_on = [
+#         helm_release.aws_load_balancer_controller
+#     ]
 # }
 
 # # istiod 설치
 # resource "helm_release" "istiod" {
-#     namespace        = "istio-system"
-#     create_namespace = true
-
-#     name       = "istiod"
-#     repository = "https://istio-release.storage.googleapis.com/charts"
-#     chart      = "istiod"
-
+#     name            = "istiod"
+#     repository      = "https://istio-release.storage.googleapis.com/charts"
+#     chart           = "istiod"
+#     namespace       = kubernetes_namespace.istio_system.metadata[0].name
 #     upgrade_install = true
 
-#     depends_on = [ helm_release.istio_base ]
+#     depends_on = [
+#         helm_release.aws_load_balancer_controller,
+#         helm_release.istio_base 
+#     ]
 # }
 
 # # istio ingressgateway 설치
 # resource "helm_release" "istio_ingress" {
-#     namespace        = "istio-ingress"
-#     create_namespace = true
-
-#     name       = "istio-ingress"
-#     repository = "https://istio-release.storage.googleapis.com/charts"
-#     chart      = "gateway"
-
+#     name            = "istio-ingress"
+#     repository      = "https://istio-release.storage.googleapis.com/charts"
+#     chart           = "gateway"
+#     namespace       = kubernetes_namespace.istio_ingress.metadata[0].name
 #     upgrade_install = true
 
 #     values = [
@@ -55,7 +66,11 @@
 #         })
 #     ]
 
-#     depends_on = [ helm_release.istio_base, helm_release.istiod ]
+#     depends_on = [
+#         helm_release.aws_load_balancer_controller,
+#         helm_release.istio_base, 
+#         helm_release.istiod 
+#     ]
 # }
 
 # # istio 'Gateway' CR 배포
