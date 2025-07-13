@@ -25,28 +25,114 @@
 
 #### **Project 03** - 프로덕션급 EKS 클러스터 ⭐
 - **목적**: 엔터프라이즈급 EKS 클러스터 구성 및 운영
-- **핵심 기능**:
-  - **Istio Service Mesh**: Ambient/Sidecar 모드 지원
-  - **완전한 모니터링 스택**: Prometheus, Grafana, Loki, Alloy
-  - **Karpenter**: 자동 노드 스케일링
-  - **Gateway API**: 차세대 네트워크 라우팅
-  - **AWS IAM 통합**: AssumeRole 기반 권한 관리
+- **클러스터 이름**: `eksstudy`
+- **환경**: `dev`
+- **리전**: `ap-northeast-2`
+
+**핵심 기능**:
+- **EKS v1.31**: 최신 쿠버네티스 버전
+- **Istio Service Mesh**: Ambient & Sidecar 모드 동시 지원
+- **완전한 모니터링 스택**: Prometheus, Grafana, Loki, Alloy 통합
+- **Karpenter v1.4.0**: 지능형 노드 자동 스케일링
+- **Gateway API**: 차세대 네트워크 라우팅
+- **Kubecost**: 비용 모니터링 및 최적화
+- **External DNS**: Route53 자동 DNS 관리
+- **AWS Load Balancer Controller**: ALB/NLB 통합 관리
+
+**인프라 구성**:
+- **VPC**: `10.0.0.0/16` (ap-northeast-2a, ap-northeast-2c)
+- **EKS Addons**: kube-proxy, CoreDNS, VPC CNI, EBS CSI, Metrics Server
+- **보안**: KMS 암호화, IRSA, ACM 인증서
+- **스토리지**: gp3 기본 스토리지 클래스
 
 **테라폼 구성**:
 ```
-terraform/
-├── eks_cluster.tf           # EKS 클러스터 기본 구성
-├── eks_karpenter.tf         # Karpenter 자동 스케일링
-├── helm_istio_ambient.tf    # Istio Ambient Mesh
-├── helm_istio_sidecar.tf    # Istio Sidecar Mesh  
-├── helm_monitoring.tf       # 통합 모니터링 스택
-├── vpc.tf                   # VPC 네트워크 구성
-├── acm.tf                   # SSL 인증서 관리
-└── manifests/               # 쿠버네티스 매니페스트
+project03/
+├── setAssumeRoleCredential.sh    # AWS 자격 증명 관리
+└── terraform/
+    ├── main.tf                   # Terraform 메인 설정
+    ├── provider.tf               # AWS/Helm/Kubectl 프로바이더
+    ├── variables.tf              # 변수 정의
+    ├── locals.tf                 # 로컬 변수
+    ├── vpc.tf                    # VPC 네트워크 구성
+    ├── kms.tf                    # KMS 키 관리
+    ├── acm.tf                    # SSL 인증서 관리
+    ├── eks_cluster.tf            # EKS 클러스터 & 노드 그룹
+    ├── eks_cluster_iam.tf        # EKS 클러스터 IAM 역할
+    ├── eks_addon.tf              # EKS 애드온 (CNI, CSI, etc.)
+    ├── eks_addon_irsa.tf         # IRSA 기반 애드온 IAM
+    ├── eks_karpenter.tf          # Karpenter 설치
+    ├── eks_karpenter_iam.tf      # Karpenter IAM 역할
+    ├── iam_assume_role.tf        # AssumeRole 설정
+    ├── helm_management.tf        # Kubecost, External DNS
+    ├── helm_external_dns_iam.tf  # External DNS IAM
+    ├── helm_kubecost_iam.tf      # Kubecost IAM
+    ├── helm_istio_ambient.tf     # Istio Ambient Mesh
+    ├── helm_istio_sidecar.tf     # Istio Sidecar Mesh
+    ├── helm_monitoring.tf        # Prometheus, Grafana, Loki, Alloy
+    └── manifests/                # 쿠버네티스 매니페스트
+        ├── alloy-configmap.hcl              # Grafana Alloy 설정
+        ├── aws-load-balancer-controller-policy.json
+        ├── karpenter-kms-policy.json        # Karpenter KMS 정책
+        ├── karpenter-nodeclass.yaml         # Karpenter EC2NodeClass
+        ├── karpenter-nodepool.yaml          # Karpenter NodePool
+        ├── storageclass.yaml                # gp3 스토리지 클래스
+        ├── gateway-api.yaml                 # Gateway API 설정
+        ├── istio-gateway.yaml               # Istio Gateway
+        ├── ingress-for-addons.yaml          # 애드온용 Ingress
+        └── ingress-for-serivces.yaml        # 서비스용 Ingress
 ```
 
 **AWS IAM 역할 관리**:
 - `setAssumeRoleCredential.sh`: terraform-assume-role, eks-assume-role 자동 전환
+- **terraform-assume-role**: 인프라 관리용 역할 (12시간 세션)
+- **eks-assume-role**: EKS 클러스터 관리용 역할 (12시간 세션)
+
+**네트워크 구성**:
+- **Public Subnets**: `10.0.1.0/24`, `10.0.2.0/24` (ALB, NAT Gateway)
+- **Private Subnets**: `10.0.10.0/24`, `10.0.20.0/24` (EKS 워커 노드)
+- **Security Groups**: 클러스터/워커 노드 분리
+- **DNS**: dongdorrong.com 도메인 사용
+
+#### **Project 04** - Bottlerocket 기반 EKS 클러스터 🚀
+- **목적**: 컨테이너 최적화 OS를 활용한 보안 강화 EKS 클러스터
+- **핵심 기능**:
+  - **Bottlerocket OS**: AWS의 컨테이너 전용 최적화 OS
+  - **향상된 보안**: 읽기 전용 루트 파일시스템, SELinux 기본 활성화
+  - **자동 업데이트**: 원자적 OS 업데이트
+  - **경량화**: 최소 패키지로 구성된 경량 OS
+  - **SSM 통합**: SSH 대신 AWS Systems Manager 세션 사용
+
+**Bottlerocket 특징**:
+- **AMI 설정**: `BOTTLEROCKET_x86_64` 타입 사용
+- **블록 디바이스**: OS 볼륨(/dev/xvda) + 데이터 볼륨(/dev/xvdb)
+- **TOML 설정**: 간단한 선언적 구성
+- **Admin Container**: 디버깅을 위한 관리 컨테이너 지원
+
+**설정 예시**:
+```yaml
+# Karpenter NodeClass
+amiSelectorTerms:
+  - alias: "bottlerocket@latest"
+  
+# UserData (TOML 형식)
+userData: |
+  [settings.kubernetes]
+  kube-api-qps = 30
+  shutdown-grace-period = "30s"
+  
+  [settings.host-containers.admin]
+  enabled = true
+```
+
+**디버깅 방법**:
+```bash
+# SSM 세션 시작
+aws ssm start-session --target i-1234567890abcdef0
+
+# Admin container 접근
+sudo sheltie
+```
 
 ---
 
@@ -94,11 +180,25 @@ terraform/
 - **Prometheus**: 메트릭 수집 및 저장
 - **Grafana**: 시각화 및 대시보드
 - **Loki**: 로그 집계 시스템
-- **Alloy**: 통합 관측 데이터 수집 에이전트
+- **Alloy**: 통합 관측 데이터 수집 에이전트 (Grafana Agent 후속)
+- **Kubecost**: 비용 모니터링 및 최적화
 
 ### Security & Policy
-- **Kyverno**: 정책 기반 보안 관리
+- **Kyverno**: 정책 기반 보안 관리 (K3s 테스트)
 - **AWS IAM**: 세분화된 권한 관리
+- **IRSA**: IAM Roles for Service Accounts
+- **KMS**: 암호화 키 관리
+- **ACM**: SSL/TLS 인증서 관리
+
+### DNS & Networking
+- **External DNS**: Route53 자동 DNS 관리
+- **Gateway API**: Kubernetes 네이티브 네트워크 라우팅
+- **AWS Load Balancer Controller**: ALB/NLB 자동 관리
+
+### Container Runtime & OS
+- **Amazon Linux 2023**: 일반 목적 컨테이너 호스트 (Project 03)
+- **AWS Bottlerocket**: 컨테이너 최적화 OS (Project 04)
+- **Containerd**: 컨테이너 런타임
 
 ### CI/CD & GitOps
 - **ArgoCD**: GitOps 기반 배포 자동화
@@ -121,8 +221,9 @@ terraform/
 
 ### 🥇 고급: 프로덕션 환경 구성
 1. **Project 03**: 엔터프라이즈급 EKS 클러스터 구축
-2. **Istio Service Mesh**: 마이크로서비스 통신 관리
-3. **통합 모니터링**: 완전한 관측성 스택 구축
+2. **Project 04**: Bottlerocket 기반 보안 강화 클러스터
+3. **Istio Service Mesh**: 마이크로서비스 통신 관리
+4. **통합 모니터링**: 완전한 관측성 스택 구축
 
 ---
 
@@ -130,11 +231,12 @@ terraform/
 
 ### 사전 요구사항
 - AWS CLI 및 자격 증명 설정
-- Terraform >= 1.0
+- Terraform >= 1.2.0
 - kubectl
 - helm
+- jq (AssumeRole 스크립트용)
 
-### Project 03 배포 (권장)
+### Project 03 배포 (Amazon Linux 2023)
 ```bash
 # 1. AWS IAM 역할 설정
 cd project03/
@@ -147,11 +249,30 @@ terraform plan
 terraform apply
 
 # 3. 클러스터 접속 설정
-aws eks update-kubeconfig --region ap-northeast-2 --name <cluster-name>
+aws eks update-kubeconfig --region ap-northeast-2 --name eksstudy --profile private
 
 # 4. 배포 확인
-kubectl get nodes
+kubectl get nodes -o wide
 kubectl get pods -A
+```
+
+### Project 04 배포 (Bottlerocket OS)
+```bash
+# 1. AWS IAM 역할 설정
+cd project04/
+./setAssumeRoleCredential.sh
+
+# 2. Terraform 초기화 및 배포
+cd terraform/
+terraform init
+terraform plan
+terraform apply
+
+# 3. 클러스터 접속 설정
+aws eks update-kubeconfig --region ap-northeast-2 --name bottlerocket --profile private
+
+# 4. Bottlerocket 노드 확인
+kubectl get nodes -o=custom-columns=NODE:.metadata.name,OS-Image:.status.nodeInfo.osImage
 ```
 
 ### 모니터링 스택 확인
@@ -171,7 +292,8 @@ kubectl port-forward -n monitoring svc/prometheus-server 9090:80
 |----------|------|-----------|
 | `project01/` | EKS 기본 구성 | Terraform, EKS, VPC |
 | `project02/` | 실습 환경 | ArgoCD, Helm, ALB Controller |
-| `project03/` | 프로덕션 환경 | Istio, Karpenter, 모니터링 스택 |
+| `project03/` | 프로덕션 환경 (Amazon Linux 2023) | Istio, Karpenter, 모니터링 스택 |
+| `project04/` | 보안 강화 환경 (Bottlerocket) | Bottlerocket OS, SSM, TOML 설정 |
 | `eks_argocd/` | GitOps 배포 | ArgoCD, GitOps |
 | `eks_istio/` | 서비스 메시 | Istio, Envoy |
 | `eks_jenkins/` | CI/CD | Jenkins, Pipeline |
