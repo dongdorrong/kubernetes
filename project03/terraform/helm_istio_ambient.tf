@@ -54,7 +54,7 @@ resource "helm_release" "istiod" {
         })
     ]
 
-    depends_on = [ helm_release.istio_base, kubectl_manifest.gateway_api_crds ]
+    depends_on = [ helm_release.aws_load_balancer_controller, helm_release.istio_base, kubectl_manifest.gateway_api_crds ]
 }
 
 # istio-cni 설치
@@ -74,7 +74,7 @@ resource "helm_release" "istio_cni" {
         })
     ]
 
-    depends_on = [ helm_release.istio_base, kubectl_manifest.gateway_api_crds, helm_release.istiod ]
+    depends_on = [ helm_release.aws_load_balancer_controller, helm_release.istio_base, kubectl_manifest.gateway_api_crds, helm_release.istiod ]
 }
 
 # ztunnel 설치
