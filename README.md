@@ -94,24 +94,78 @@ project03/
 - **Security Groups**: 클러스터/워커 노드 분리
 - **DNS**: dongdorrong.com 도메인 사용
 
-#### **Project 04** - Bottlerocket 기반 EKS 클러스터 🚀
-- **목적**: 컨테이너 최적화 OS를 활용한 보안 강화 EKS 클러스터
-- **핵심 기능**:
-  - **Bottlerocket OS**: AWS의 컨테이너 전용 최적화 OS
-  - **향상된 보안**: 읽기 전용 루트 파일시스템, SELinux 기본 활성화
-  - **자동 업데이트**: 원자적 OS 업데이트
-  - **경량화**: 최소 패키지로 구성된 경량 OS
-  - **SSM 통합**: SSH 대신 AWS Systems Manager 세션 사용
+#### **Project 04** - Bottlerocket 기반 보안 강화 EKS 클러스터 🚀
+- **목적**: 컨테이너 최적화 OS와 통합 보안 솔루션을 활용한 엔터프라이즈급 EKS 클러스터
+- **클러스터 이름**: `bottlerocket`
+- **환경**: `dev`
+- **리전**: `ap-northeast-2`
+
+**핵심 기능**:
+- **Bottlerocket OS**: AWS의 컨테이너 전용 최적화 OS
+- **Keycloak**: 통합 인증 관리 시스템
+- **Trivy Operator**: 실시간 보안 취약점 스캐닝
+- **Istio Service Mesh**: Ambient & Sidecar 모드 동시 지원
+- **완전한 모니터링 스택**: Prometheus, Grafana, Loki, Alloy 통합
+- **Karpenter**: Bottlerocket 최적화 노드 자동 스케일링
+- **External DNS & Kubecost**: 운영 효율성 극대화
 
 **Bottlerocket 특징**:
-- **AMI 설정**: `BOTTLEROCKET_x86_64` 타입 사용
-- **블록 디바이스**: OS 볼륨(/dev/xvda) + 데이터 볼륨(/dev/xvdb)
+- **AMI 설정**: `bottlerocket@latest` 별칭 사용
+- **블록 디바이스**: OS 볼륨(/dev/xvda, 100GB) + gp3 암호화
 - **TOML 설정**: 간단한 선언적 구성
-- **Admin Container**: 디버깅을 위한 관리 컨테이너 지원
+- **Admin Container**: 디버깅을 위한 관리 컨테이너 활성화
+- **SELinux**: 기본 활성화된 보안 정책
+- **읽기 전용 루트**: 불변 인프라 원칙 적용
+
+**보안 강화 기능**:
+- **Trivy Operator**: 컨테이너 이미지 및 클러스터 보안 스캐닝
+- **Keycloak**: OpenID Connect 기반 통합 인증
+- **KMS 암호화**: 모든 스토리지 암호화 적용
+- **Network Policy**: 네트워크 레벨 보안 정책
+
+**테라폼 구성**:
+```
+project04/
+├── setAssumeRoleCredential.sh    # AWS 자격 증명 관리
+└── terraform/
+    ├── main.tf                   # Terraform 메인 설정
+    ├── provider.tf               # AWS/Helm/Kubectl 프로바이더
+    ├── variables.tf              # 변수 정의
+    ├── locals.tf                 # 로컬 변수
+    ├── vpc.tf                    # VPC 네트워크 구성
+    ├── kms.tf                    # KMS 키 관리
+    ├── acm.tf                    # SSL 인증서 관리
+    ├── eks_cluster.tf            # EKS 클러스터 & 노드 그룹
+    ├── eks_cluster_iam.tf        # EKS 클러스터 IAM 역할
+    ├── eks_addon.tf              # EKS 애드온 (CNI, CSI, etc.)
+    ├── eks_addon_irsa.tf         # IRSA 기반 애드온 IAM
+    ├── eks_karpenter.tf          # Karpenter 설치
+    ├── eks_karpenter_iam.tf      # Karpenter IAM 역할
+    ├── iam_assume_role.tf        # AssumeRole 설정
+    ├── helm_management.tf        # Kubecost, External DNS
+    ├── helm_external_dns_iam.tf  # External DNS IAM
+    ├── helm_kubecost_iam.tf      # Kubecost IAM
+    ├── helm_istio_ambient.tf     # Istio Ambient Mesh
+    ├── helm_istio_sidecar.tf     # Istio Sidecar Mesh
+    ├── helm_monitoring.tf        # Prometheus, Grafana, Loki, Alloy
+    ├── helm_keycloak.tf          # Keycloak 인증 시스템
+    ├── helm_security.tf          # Trivy Operator 보안 스캐닝
+    └── manifests/                # 쿠버네티스 매니페스트
+        ├── alloy-configmap.hcl              # Grafana Alloy 설정
+        ├── aws-load-balancer-controller-policy.json
+        ├── karpenter-kms-policy.json        # Karpenter KMS 정책
+        ├── karpenter-nodeclass.yaml         # Bottlerocket NodeClass
+        ├── karpenter-nodepool.yaml          # Karpenter NodePool
+        ├── storageclass.yaml                # gp3 스토리지 클래스
+        ├── gateway-api.yaml                 # Gateway API 설정
+        ├── istio-gateway.yaml               # Istio Gateway
+        ├── ingress-for-addons.yaml          # 애드온용 Ingress
+        └── ingress-for-serivces.yaml        # 서비스용 Ingress
+```
 
 **설정 예시**:
 ```yaml
-# Karpenter NodeClass
+# Karpenter NodeClass (Bottlerocket)
 amiSelectorTerms:
   - alias: "bottlerocket@latest"
   
@@ -120,6 +174,9 @@ userData: |
   [settings.kubernetes]
   kube-api-qps = 30
   shutdown-grace-period = "30s"
+  
+  [settings.kubernetes.eviction-hard]
+  "memory.available" = "20%"
   
   [settings.host-containers.admin]
   enabled = true
@@ -133,6 +190,18 @@ aws ssm start-session --target i-1234567890abcdef0
 # Admin container 접근
 sudo sheltie
 ```
+
+**리소스 제외 정책**:
+- **고자원 소모 애플리케이션**: PostgreSQL, Redis, Kafka, Airflow 등은 별도 관리형 서비스 사용 권장
+- **경량화 원칙**: 쿠버네티스 클러스터는 애플리케이션 워크로드에 최적화
+
+**🔧 개선 예정 사항**:
+- **Velero**: 백업 및 재해 복구 시스템 추가
+- **KEDA**: 이벤트 기반 자동 스케일링 구현
+- **Cert-Manager**: 자동 SSL 인증서 관리 추가
+- **Kubernetes Replicator**: Secret/ConfigMap 자동 복제
+- **Loki Distributed**: SingleBinary → Distributed 모드 전환
+- **Thanos**: Prometheus 고가용성 및 장기 보관 구현
 
 ---
 
@@ -185,10 +254,16 @@ sudo sheltie
 
 ### Security & Policy
 - **Kyverno**: 정책 기반 보안 관리 (K3s 테스트)
+- **Trivy Operator**: 컨테이너 이미지 보안 취약점 스캐닝 (Project 04)
 - **AWS IAM**: 세분화된 권한 관리
 - **IRSA**: IAM Roles for Service Accounts
 - **KMS**: 암호화 키 관리
 - **ACM**: SSL/TLS 인증서 관리
+
+### Identity & Access Management
+- **Keycloak**: OpenID Connect 기반 통합 인증 시스템 (Project 04)
+- **AWS IAM**: 클라우드 리소스 접근 제어
+- **RBAC**: 쿠버네티스 역할 기반 접근 제어
 
 ### DNS & Networking
 - **External DNS**: Route53 자동 DNS 관리
@@ -273,6 +348,18 @@ aws eks update-kubeconfig --region ap-northeast-2 --name bottlerocket --profile 
 
 # 4. Bottlerocket 노드 확인
 kubectl get nodes -o=custom-columns=NODE:.metadata.name,OS-Image:.status.nodeInfo.osImage
+
+# 5. 보안 스캐닝 확인
+kubectl get vulnerabilityreports -A
+kubectl get configauditreports -A
+
+# 6. Keycloak 접속 확인
+kubectl get pods -n keycloak
+kubectl port-forward -n keycloak svc/keycloak 8080:80
+
+# 7. Trivy Operator 메트릭 확인
+kubectl get pods -n security
+kubectl logs -n security deployment/trivy-operator
 ```
 
 ### 모니터링 스택 확인
@@ -293,7 +380,7 @@ kubectl port-forward -n monitoring svc/prometheus-server 9090:80
 | `project01/` | EKS 기본 구성 | Terraform, EKS, VPC |
 | `project02/` | 실습 환경 | ArgoCD, Helm, ALB Controller |
 | `project03/` | 프로덕션 환경 (Amazon Linux 2023) | Istio, Karpenter, 모니터링 스택 |
-| `project04/` | 보안 강화 환경 (Bottlerocket) | Bottlerocket OS, SSM, TOML 설정 |
+| `project04/` | 보안 강화 환경 (Bottlerocket) | Bottlerocket OS, Keycloak, Trivy, SSM |
 | `eks_argocd/` | GitOps 배포 | ArgoCD, GitOps |
 | `eks_istio/` | 서비스 메시 | Istio, Envoy |
 | `eks_jenkins/` | CI/CD | Jenkins, Pipeline |
