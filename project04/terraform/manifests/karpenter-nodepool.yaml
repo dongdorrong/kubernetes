@@ -17,10 +17,12 @@ spec:
           values: ["spot"]
         - key: karpenter.k8s.aws/instance-category
           operator: In
-          values: ["t", "m", "c", "r"]
+          # 2025-08-23 : 사용할 수 있는 values 종류 ["t", "m", "c", "r"]
+          values: ["t"]
         - key: karpenter.k8s.aws/instance-size
           operator: In
-          values: ["small", "medium", "large"]
+          # 2025-08-23 : 사용할 수 있는 values 종류 ["small", "medium", "large"]
+          values: ["large", "xlarge"]
         - key: karpenter.k8s.aws/instance-generation
           operator: Gt
           values: ["1"]
