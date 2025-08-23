@@ -101,6 +101,7 @@
 #               p.node_port if p.port == 15021
 #         ][0])
 
+#         # WAF_ACL_ARN                    = aws_wafv2_web_acl.main.arn
 #         WAF_ACL_ARN                    = ""
 #     })
 
@@ -118,6 +119,7 @@
 #               p.node_port if p.port == 15021
 #         ][0])
 
+#         # WAF_ACL_ARN                    = aws_wafv2_web_acl.main.arn
 #         WAF_ACL_ARN                    = ""
 #     })
 
