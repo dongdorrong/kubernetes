@@ -62,19 +62,6 @@ userData: |
   enabled = true
 ```
 
-### 디버깅 방법
-```bash
-# SSM 세션 시작
-aws ssm start-session --target i-1234567890abcdef0
-
-# Admin container 접근
-sudo sheltie
-
-# 호스트 상태 확인
-apiclient get settings
-apiclient get services
-```
-
 ---
 
 ## 🏗️ 인프라 아키텍처
@@ -87,7 +74,7 @@ apiclient get services
 - **DNS**: dongdorrong.com 도메인 사용
 
 ### EKS 구성
-- **EKS v1.31**: 최신 쿠버네티스 버전
+- **EKS v1.33**: 최신 쿠버네티스 버전
 - **EKS Addons**: kube-proxy, CoreDNS, VPC CNI, EBS CSI, Metrics Server
 - **IRSA**: IAM Roles for Service Accounts
 - **스토리지**: gp3 기본 스토리지 클래스
@@ -107,6 +94,7 @@ project04/
     ├── vpc.tf                    # VPC 네트워크 구성
     ├── kms.tf                    # KMS 키 관리
     ├── acm.tf                    # SSL 인증서 관리
+    ├── waf.tf                    # WAF 구성
     ├── eks_cluster.tf            # EKS 클러스터 & 노드 그룹
     ├── eks_cluster_iam.tf        # EKS 클러스터 IAM 역할
     ├── eks_addon.tf              # EKS 애드온 (CNI, CSI, etc.)
