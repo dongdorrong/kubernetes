@@ -7,3 +7,4 @@ docker_registry.sh
 install.sh
 project_test/
 argocd.info
+venv/
