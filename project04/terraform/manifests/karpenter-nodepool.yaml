@@ -35,5 +35,8 @@ spec:
     cpu: "8"
     memory: 32Gi
   disruption:
-    consolidationPolicy: WhenEmpty
+    # WhenEmpty : 노드가 완전히 비어 있을 때 해당 노드를 제거한다.
+    # WhenEmptyOrUnderutilized : 노드가 비어 있거나 활용도가 낮을 때 노드를 제거/교체한다.
+    # Never : consolidation을 비활성화한다. (노드 제거/교체 없음)
+    consolidationPolicy: WhenEmptyOrUnderutilized
     consolidateAfter: 30s
