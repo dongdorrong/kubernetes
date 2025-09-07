@@ -1,0 +1,14 @@
+# Project 04 - Diagrams Requirements
+# Python 패키지 의존성
+
+# Core diagrams library
+diagrams==0.23.4
+
+# Additional dependencies for enhanced functionality
+graphviz==0.20.1
+pillow==10.0.1
+
+# Development dependencies (optional)
+pytest==7.4.3
+black==23.9.1
+flake8==6.1.0
