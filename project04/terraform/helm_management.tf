@@ -118,3 +118,119 @@
 #         aws_iam_role_policy_attachment.external_dns
 #     ]
 # }
+
+# # # Velero Helm 차트 설치
+# # https://github.com/vmware-tanzu/helm-charts
+
+# # 네임스페이스 생성
+# resource "kubernetes_namespace" "velero" {
+#     metadata {
+#         name = "velero"
+#     }
+# }
+
+# resource "helm_release" "velero" {
+#     name            = "velero"
+#     repository      = "https://vmware-tanzu.github.io/helm-charts"
+#     chart           = "velero"
+#     namespace       = kubernetes_namespace.velero.metadata[0].name
+#     upgrade_install = true
+
+#     values = [
+#         yamlencode({
+
+#             initContainers = [{
+#                 name = "velero-plugin-for-aws"
+#                 image = "velero/velero-plugin-for-aws:v1.9.0"
+#                 imagePullPolicy = "IfNotPresent"
+#                 volumeMounts = [
+#                     {
+#                         mountPath = "/target"
+#                         name = "plugins"
+#                     }
+#                 ]
+#             }]
+
+#             metrics = {
+#                 enabled = true
+
+#                 serviceMonitor = {
+#                     autodetect = true
+#                     enabled = true
+#                     annotations = {}
+#                     additionalLabels = {
+#                         release = "prometheus-stack"
+#                     }
+#                 }
+
+#                 prometheusRule = {
+#                     autodetect = true
+#                     enabled = true
+#                     additionalLabels = {
+#                         release = "prometheus-stack"
+#                     }
+#                     namespace = "monitoring"
+#                     spec = [
+#                         {
+#                             alert = "VeleroBackupPartialFailures"
+#                             annotations = {
+#                                 message = "Velero backup {{ $labels.schedule }} has {{ $value | humanizePercentage }} partialy failed backups."
+#                             }
+#                             expr = "velero_backup_partial_failure_total{schedule!=\"\"} / velero_backup_attempt_total{schedule!=\"\"} > 0.25"
+#                             for = "15m"
+#                             labels = {
+#                                 severity = "warning"
+#                             }
+#                         },
+#                         {
+#                             alert = "VeleroBackupFailures"
+#                             annotations = {
+#                                 message = "Velero backup {{ $labels.schedule }} has {{ $value | humanizePercentage }} failed backups."
+#                             }
+#                             expr = "velero_backup_failure_total{schedule!=\"\"} / velero_backup_attempt_total{schedule!=\"\"} > 0.25"
+#                             for = "15m"
+#                             labels = {
+#                                 severity = "warning"
+#                             }
+#                         }
+#                     ]
+#                 }
+#             }
+
+#             configuration = {
+#                 backupStorageLocation = [
+#                     {
+#                         name = "aws"
+#                         provider = "aws"
+#                         bucket = "velero-bucket-b2cd0419-0329-4a3d-a7a6-a458610c33c5"
+#                         config = {
+#                             region = "us-east-1"
+#                             s3ForcePathStyle = true
+#                             s3Url = "http://rook-ceph-rgw-ceph-objectstore.rook-ceph.svc.cluster.local"
+#                             publicUrl = "http://rook-ceph-rgw-ceph-objectstore.rook-ceph.svc.cluster.local"
+#                             insecureSkipTLSVerify = true
+#                         }
+#                     }
+#                 ]
+
+#                 defaultBackupStorageLocation = "aws"
+#             }
+
+#             credentials = {
+#                 useSecret = true
+#                 secretContents = {
+#                     cloud = <<EOF
+#                     [default]
+#                     aws_access_key_id=RIksnqalq5to2oFZMR0Q
+#                     aws_secret_access_key=RIksnqalq5to2oFZMR0Q
+#                     EOF
+#                 }
+#             }
+
+#             snapshotsEnabled = false
+#         })
+#     ]
+# }
+
+# # kubent 
+# # https://github.com/doitintl/kube-no-trouble

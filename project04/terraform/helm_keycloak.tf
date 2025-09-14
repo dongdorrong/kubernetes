@@ -1,3 +1,7 @@
+# ####################################################################
+# # Archive (Bitnami 정책으로 기존 차트 사용 불가, 히스토리만 남김)
+# ####################################################################
+
 # # # Kubecost Helm 차트 설치
 # # https://github.com/bitnami/charts/tree/main/bitnami/keycloak
 
@@ -17,10 +21,17 @@
 
 #     values = [
 #         yamlencode({
-#             extraEnvVars = [{
-#                 name = "KEYCLOAK_EXTRA_ARGS_PREPENDED"
-#                 value = "--spi-login-protocol-openid-connect-legacy-logout-redirect-uri=true"
-#             }]
+#             auth = {
+#                 adminUser = "admin"
+#                 adminPassword = "admin"
+#             }
+            
+#             extraEnvVars = [
+#                 {
+#                     name = "KEYCLOAK_EXTRA_ARGS_PREPENDED"
+#                     value = "--spi-login-protocol-openid-connect-legacy-logout-redirect-uri=true"
+#                 }
+#             ]
 
 #             resourcesPreset = "large"
 
