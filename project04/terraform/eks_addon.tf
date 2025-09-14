@@ -128,3 +128,54 @@ resource "kubernetes_manifest" "storageclass" {
         aws_eks_addon.ebs_csi
     ]
 }
+
+# Mountpoint for Amazon S3 CSI 드라이버
+resource "aws_eks_addon" "s3_csi" {
+    cluster_name                = aws_eks_cluster.this.name
+    addon_name                  = "aws-mountpoint-s3-csi-driver"
+    service_account_role_arn    = aws_iam_role.s3_csi.arn
+    resolve_conflicts_on_create = "OVERWRITE"
+    resolve_conflicts_on_update = "PRESERVE"
+    configuration_values = jsonencode({
+        node = {
+            tolerateAllTaints = true
+        }
+    })
+
+    depends_on = [
+        aws_eks_cluster.this,
+        aws_iam_openid_connect_provider.this,
+        aws_eks_addon.coredns,
+        aws_s3_bucket.app_data
+    ]
+}
+
+# # 노드 모니터링 에이전트
+# resource "aws_eks_addon" "node_monitoring" {
+#     cluster_name                = aws_eks_cluster.this.name
+#     addon_name                  = "eks-node-monitoring-agent"
+#     resolve_conflicts_on_create = "OVERWRITE"
+#     resolve_conflicts_on_update = "PRESERVE"
+
+#     depends_on = [aws_eks_cluster.this]
+# }
+
+# # AWS Network Flow Monitor Agent
+# resource "aws_eks_addon" "network_flow" {
+#     cluster_name                = aws_eks_cluster.this.name
+#     addon_name                  = "aws-network-flow-monitoring-agent"
+#     resolve_conflicts_on_create = "OVERWRITE"
+#     resolve_conflicts_on_update = "PRESERVE"
+
+#     depends_on = [aws_eks_cluster.this]
+# }
+
+# # AWS Private CA Connector for Kubernetes
+# resource "aws_eks_addon" "private_ca" {
+#     cluster_name                = aws_eks_cluster.this.name
+#     addon_name                  = "aws-privateca-connector-for-kubernetes"
+#     resolve_conflicts_on_create = "OVERWRITE"
+#     resolve_conflicts_on_update = "PRESERVE"
+
+#     depends_on = [aws_eks_cluster.this]
+# }
