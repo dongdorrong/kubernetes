@@ -1,6 +1,6 @@
 # Karpenter 노드 인스턴스 프로파일
 resource "aws_iam_instance_profile" "karpenter" {
-    name = "karpenter-node-profile"
+    name = "${local.project_name}-karpenter-node-profile"
     role = aws_iam_role.karpenter_node.name
 }
 
