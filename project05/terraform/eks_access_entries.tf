@@ -52,3 +52,22 @@ resource "aws_eks_access_policy_association" "default_node_group" {
 
     depends_on = [aws_eks_access_entry.default_node_group]
 }
+
+# EKS Access Entry - Karpenter 노드 역할
+resource "aws_eks_access_entry" "karpenter_node" {
+    cluster_name  = aws_eks_cluster.this.name
+    principal_arn = aws_iam_role.karpenter_node.arn
+    type          = "EC2_LINUX"
+}
+
+resource "aws_eks_access_policy_association" "karpenter_node" {
+    cluster_name  = aws_eks_cluster.this.name
+    principal_arn = aws_iam_role.karpenter_node.arn
+    policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSNodeAccessPolicy"
+
+    access_scope {
+        type = "cluster"
+    }
+
+    depends_on = [aws_eks_access_entry.karpenter_node]
+}
