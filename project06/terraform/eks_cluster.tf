@@ -90,7 +90,8 @@ resource "aws_eks_node_group" "default" {
     subnet_ids      = local.subnet_ids
 
     instance_types = [ "t3.medium" ]
-    ami_type       = "BOTTLEROCKET_x86_64"
+    # ami_type       = "BOTTLEROCKET_x86_64"
+    ami_type       = "AL2023_x86_64_STANDARD"
     capacity_type  = "SPOT"
 
     scaling_config {

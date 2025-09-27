@@ -78,7 +78,8 @@ resource "kubectl_manifest" "karpenter_nodepool" {
 
 # Karpenter NodeClass 설정
 resource "kubectl_manifest" "karpenter_nodeclass" {
-    yaml_body = templatefile("${path.module}/manifests/karpenter-nodeclass.yaml", {
+    # yaml_body = templatefile("${path.module}/manifests/karpenter-nodeclass.yaml", {
+    yaml_body = templatefile("${path.module}/manifests/karpenter-nodeclass-amazonlinux.yaml", {
         CLUSTER_NAME  = aws_eks_cluster.this.name
         ALIAS_VERSION = "latest"
         NODE_NAME     = local.node_name_format
