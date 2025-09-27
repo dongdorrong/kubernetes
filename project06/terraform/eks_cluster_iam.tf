@@ -48,11 +48,10 @@ resource "aws_iam_role_policy_attachment" "default_node_nodePolicy" {
     role       = aws_iam_role.default_node_group.name
 }
 
-# # 2025-09-27 VPC CNI을 Pod Identity를 통해 관리하고 있어서, 노드 그룹 권한에서 제거 처리함.
-# resource "aws_iam_role_policy_attachment" "default_node_cniPolicy" {
-#     policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
-#     role       = aws_iam_role.default_node_group.name
-# }
+resource "aws_iam_role_policy_attachment" "default_node_cniPolicy" {
+    policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+    role       = aws_iam_role.default_node_group.name
+}
 
 resource "aws_iam_role_policy_attachment" "default_node_registryPolicy" {
     policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"

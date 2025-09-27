@@ -22,11 +22,10 @@ resource "aws_iam_role_policy_attachment" "karpenter_node_eks_worker" {
 }
 
 # Karpenter 노드 IAM 정책 연결
-# # 2025-09-27 VPC CNI을 Pod Identity를 통해 관리하고 있어서, 노드 그룹 권한에서 제거 처리함.
-# resource "aws_iam_role_policy_attachment" "karpenter_node_eks_worker" {
-#     policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
-#     role       = aws_iam_role.karpenter_node.name
-# }
+resource "aws_iam_role_policy_attachment" "karpenter_node_eks_cni" {
+    policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+    role       = aws_iam_role.karpenter_node.name
+}
 
 resource "aws_iam_role_policy_attachment" "karpenter_node_ecr" {
     policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
@@ -98,7 +97,7 @@ resource "aws_iam_role_policy" "karpenter_controller" {
             },
             {
                 Action = [
-                    "iam:PassRole",
+                "iam:PassRole",
                 ]
                 Effect   = "Allow"
                 Resource = aws_iam_role.karpenter_node.arn

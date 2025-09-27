@@ -1,11 +1,11 @@
 # EKS Pod Identity용 AssumeRole 정책
-# VPC CNI, EBS CSI, AWS Load Balancer Controller 등의 Pod Identity 역할에 공통으로 사용
+# EBS CSI, AWS Load Balancer Controller 등 Pod Identity 역할에 공통으로 사용
 # eks-pod-identity-agent 애드온에서 발급하는 토큰을 신뢰하도록 구성
 # SourceArn 조건으로 동일 클러스터의 Pod Identity Association에서만 호출 허용
 # SourceAccount 조건으로 현재 계정에서만 허용하도록 제한
 # 리소스는 for_each를 사용하여 각 서비스 별로 생성
 # - ebs_csi: aws-ebs-csi-driver 컨트롤러
-# - vpc_cni: aws-node 데몬셋
+# (VPC CNI는 노드 IAM 역할로 관리하기로 결정하여 Pod Identity 리스트에서 제외)
 # - aws_load_balancer_controller: ALB 컨트롤러 헬름 릴리스
 # - network_flow_monitor: AWS Network Flow Monitor Agent
 # - node_monitoring: EKS Node Monitoring Agent
@@ -20,7 +20,7 @@
 # 따라서 association 리소스에서 애드온에 대한 depends_on을 지정함
 # assume role 정책에는 TagSession 권한도 포함하여 AWS Load Balancer Controller의 태깅 요구 사항 충족
 # session tagging을 사용하면 리소스에 컨트롤러가 태그를 추가할 수 있음
-# Terraform에서는 toset을 활용하여 고정된 세 가지 항목에 대해 반복 생성
+# Terraform에서는 toset을 활용하여 고정된 여러 항목에 대해 반복 생성
 # 필요 시 향후 다른 애드온도 쉽게 추가 가능
 # 역할 이름은 프로젝트 이름 기반으로 고유하게 생성
 # 정책 문서는 aws_iam_policy_document 데이터 소스를 사용하여 JSON 생성
@@ -32,7 +32,6 @@
 data "aws_iam_policy_document" "pod_identity_assume_role" {
     for_each = toset([
       "ebs_csi",
-      "vpc_cni",
       "aws_load_balancer_controller",
       "network_flow_monitor",
       "node_monitoring",
@@ -228,27 +227,31 @@ resource "aws_eks_pod_identity_association" "ebs_csi" {
 }
 
 # VPC CNI를 위한 Pod Identity 역할
-resource "aws_iam_role" "vpc_cni" {
-    name               = "${local.project_name}-vpc-cni-role"
-    assume_role_policy = data.aws_iam_policy_document.pod_identity_assume_role["vpc_cni"].json
-}
+# 2025-09-27 
+# - 기본 노드 그룹, Karpenter의 노드 IAM 역할에 부여한 정책으로 관리하고 있음
+# - Pod Identity를 통해서 관리할 경우, 정책 마이그레이션이 필요하여 복잡성을 야기함.
+# - 그래서 VPC CNI의 경우 Pod Identity로 관리하지 않기로 함
+# resource "aws_iam_role" "vpc_cni" {
+#     name               = "${local.project_name}-vpc-cni-role"
+#     assume_role_policy = data.aws_iam_policy_document.pod_identity_assume_role["vpc_cni"].json
+# }
 
-resource "aws_iam_role_policy_attachment" "vpc_cni" {
-    role       = aws_iam_role.vpc_cni.name
-    policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
-}
+# resource "aws_iam_role_policy_attachment" "vpc_cni" {
+#     role       = aws_iam_role.vpc_cni.name
+#     policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+# }
 
-resource "aws_eks_pod_identity_association" "vpc_cni" {
-    cluster_name    = aws_eks_cluster.this.name
-    namespace       = "kube-system"
-    service_account = "aws-node"
-    role_arn        = aws_iam_role.vpc_cni.arn
+# resource "aws_eks_pod_identity_association" "vpc_cni" {
+#     cluster_name    = aws_eks_cluster.this.name
+#     namespace       = "kube-system"
+#     service_account = "aws-node"
+#     role_arn        = aws_iam_role.vpc_cni.arn
 
-    depends_on = [
-      aws_eks_addon.pod_identity,
-      aws_eks_addon.vpc_cni,
-    ]
-}
+#     depends_on = [
+#       aws_eks_addon.pod_identity,
+#       aws_eks_addon.vpc_cni,
+#     ]
+# }
 
 # AWS Load Balancer Controller를 위한 Pod Identity 역할
 resource "aws_iam_role" "aws_load_balancer_controller" {
