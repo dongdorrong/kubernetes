@@ -37,26 +37,35 @@ resource "aws_iam_role_policy_attachment" "karpenter_node_ssm" {
 }
 
 # Karpenter 컨트롤러 IAM 역할
+data "aws_iam_policy_document" "karpenter_pod_identity_assume_role" {
+    statement {
+        actions = ["sts:AssumeRole"]
+        effect  = "Allow"
+
+        principals {
+            type        = "Service"
+            identifiers = ["pods.eks.amazonaws.com"]
+        }
+
+        condition {
+            test     = "ArnLike"
+            variable = "aws:SourceArn"
+            values = [
+                "arn:aws:eks:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:podidentityassociation/${aws_eks_cluster.this.name}/*"
+            ]
+        }
+
+        condition {
+            test     = "StringEquals"
+            variable = "aws:SourceAccount"
+            values   = [data.aws_caller_identity.current.account_id]
+        }
+    }
+}
+
 resource "aws_iam_role" "karpenter_controller" {
     name               = "${local.project_name}-karpenter-controller-role"
-    assume_role_policy = jsonencode({
-        Version = "2012-10-17"
-        Statement = [
-            {
-                Effect = "Allow"
-                Principal = {
-                    Federated = aws_iam_openid_connect_provider.this.arn
-                }
-                Action = "sts:AssumeRoleWithWebIdentity"
-                Condition = {
-                    StringEquals = {
-                        "${replace(aws_eks_cluster.this.identity[0].oidc[0].issuer, "https://", "")}:aud": "sts.amazonaws.com",
-                        "${replace(aws_eks_cluster.this.identity[0].oidc[0].issuer, "https://", "")}:sub": "system:serviceaccount:karpenter:karpenter"
-                    }
-                }
-            }
-        ]
-    })
+    assume_role_policy = data.aws_iam_policy_document.karpenter_pod_identity_assume_role.json
 }
 
 # Karpenter 컨트롤러 IAM 정책
@@ -96,11 +105,23 @@ resource "aws_iam_role_policy" "karpenter_controller" {
             },
             {
                 Action = [
-                "iam:PassRole",
+                    "iam:PassRole",
                 ]
                 Effect   = "Allow"
                 Resource = aws_iam_role.karpenter_node.arn
             }
         ]
     })
+}
+
+resource "aws_eks_pod_identity_association" "karpenter" {
+    cluster_name    = aws_eks_cluster.this.name
+    namespace       = "karpenter"
+    service_account = "karpenter"
+    role_arn        = aws_iam_role.karpenter_controller.arn
+
+    depends_on = [
+        aws_eks_addon.pod_identity,
+        helm_release.karpenter
+    ]
 }
