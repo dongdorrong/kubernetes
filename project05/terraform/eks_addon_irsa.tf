@@ -1,25 +1,45 @@
-# EBS CSI Controller를 위한 IRSA
-data "aws_iam_policy_document" "ebs_csi_assume_role" {
+resource "aws_iam_policy" "aws_load_balancer_controller" {
+    name = "${local.project_name}-aws-load-balancer-controller-policy"
+    policy = file("${path.module}/manifests/aws-load-balancer-controller-policy.json")
+}
+
+# EKS Pod Identity용 AssumeRole 정책
+data "aws_iam_policy_document" "pod_identity_assume_role" {
+    for_each = toset([
+        "ebs_csi",
+        "vpc_cni",
+        "aws_load_balancer_controller",
+    ])
+
     statement {
-        actions = ["sts:AssumeRoleWithWebIdentity"]
+        actions = ["sts:AssumeRole"]
         effect  = "Allow"
+
+        principals {
+            identifiers = ["pods.eks.amazonaws.com"]
+            type        = "Service"
+        }
+
+        condition {
+            test     = "ArnLike"
+            variable = "aws:SourceArn"
+            values = [
+                "arn:aws:eks:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:podidentityassociation/${aws_eks_cluster.this.name}/*"
+            ]
+        }
 
         condition {
             test     = "StringEquals"
-            variable = "${replace(aws_eks_cluster.this.identity[0].oidc[0].issuer, "https://", "")}:sub"
-            values   = ["system:serviceaccount:kube-system:ebs-csi-controller-sa"]
-        }
-
-        principals {
-            identifiers = [aws_iam_openid_connect_provider.this.arn]
-            type        = "Federated"
+            variable = "aws:SourceAccount"
+            values   = [data.aws_caller_identity.current.account_id]
         }
     }
 }
 
+# EBS CSI Controller를 위한 Pod Identity 역할
 resource "aws_iam_role" "ebs_csi" {
     name               = "${local.project_name}-ebs-csi-role"
-    assume_role_policy = data.aws_iam_policy_document.ebs_csi_assume_role.json
+    assume_role_policy = data.aws_iam_policy_document.pod_identity_assume_role["ebs_csi"].json
 }
 
 resource "aws_iam_role_policy_attachment" "ebs_csi" {
@@ -27,28 +47,22 @@ resource "aws_iam_role_policy_attachment" "ebs_csi" {
     policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
 }
 
-# VPC CNI를 위한 IRSA
-data "aws_iam_policy_document" "vpc_cni_assume_role" {
-    statement {
-        actions = ["sts:AssumeRoleWithWebIdentity"]
-        effect  = "Allow"
+resource "aws_eks_pod_identity_association" "ebs_csi" {
+    cluster_name    = aws_eks_cluster.this.name
+    namespace       = "kube-system"
+    service_account = "ebs-csi-controller-sa"
+    role_arn        = aws_iam_role.ebs_csi.arn
 
-        condition {
-            test     = "StringEquals"
-            variable = "${replace(aws_eks_cluster.this.identity[0].oidc[0].issuer, "https://", "")}:sub"
-            values   = ["system:serviceaccount:kube-system:aws-node"]
-        }
-
-        principals {
-            identifiers = [aws_iam_openid_connect_provider.this.arn]
-            type        = "Federated"
-        }
-    }
+    depends_on = [
+        aws_eks_addon.pod_identity,
+        aws_eks_addon.ebs_csi,
+    ]
 }
 
+# VPC CNI를 위한 Pod Identity 역할
 resource "aws_iam_role" "vpc_cni" {
-    name = "${local.project_name}-vpc-cni-role"
-    assume_role_policy = data.aws_iam_policy_document.vpc_cni_assume_role.json
+    name               = "${local.project_name}-vpc-cni-role"
+    assume_role_policy = data.aws_iam_policy_document.pod_identity_assume_role["vpc_cni"].json
 }
 
 resource "aws_iam_role_policy_attachment" "vpc_cni" {
@@ -56,33 +70,22 @@ resource "aws_iam_role_policy_attachment" "vpc_cni" {
     policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
 }
 
-# AWS Load Balancer Controller를 위한 IRSA
-resource "aws_iam_policy" "aws_load_balancer_controller" {
-    name = "${local.project_name}-aws-load-balancer-controller-policy"
-    policy = file("${path.module}/manifests/aws-load-balancer-controller-policy.json")
+resource "aws_eks_pod_identity_association" "vpc_cni" {
+    cluster_name    = aws_eks_cluster.this.name
+    namespace       = "kube-system"
+    service_account = "aws-node"
+    role_arn        = aws_iam_role.vpc_cni.arn
+
+    depends_on = [
+        aws_eks_addon.pod_identity,
+        aws_eks_addon.vpc_cni,
+    ]
 }
 
+# AWS Load Balancer Controller를 위한 Pod Identity 역할
 resource "aws_iam_role" "aws_load_balancer_controller" {
-    name = "${local.project_name}-aws-load-balancer-controller"
-
-    assume_role_policy = jsonencode({
-        Version = "2012-10-17"
-        Statement = [
-            {
-                Effect = "Allow"
-                Principal = {
-                    Federated = aws_iam_openid_connect_provider.this.arn
-                }
-                Action = "sts:AssumeRoleWithWebIdentity"
-                Condition = {
-                    StringEquals = {
-                        "${replace(aws_eks_cluster.this.identity[0].oidc[0].issuer, "https://", "")}:aud": "sts.amazonaws.com",
-                        "${replace(aws_eks_cluster.this.identity[0].oidc[0].issuer, "https://", "")}:sub": "system:serviceaccount:kube-system:aws-load-balancer-controller"
-                    }
-                }
-            }
-        ]
-    })
+    name               = "${local.project_name}-aws-load-balancer-controller"
+    assume_role_policy = data.aws_iam_policy_document.pod_identity_assume_role["aws_load_balancer_controller"].json
 }
 
 resource "aws_iam_role_policy_attachment" "aws_load_balancer_controller" {
@@ -98,10 +101,19 @@ resource "kubernetes_service_account" "aws_load_balancer_controller" {
             "app.kubernetes.io/name"      = "aws-load-balancer-controller"
             "app.kubernetes.io/component" = "controller"
         }
-        annotations = {
-            "eks.amazonaws.com/role-arn" = aws_iam_role.aws_load_balancer_controller.arn
-        }
     }
+}
+
+resource "aws_eks_pod_identity_association" "aws_load_balancer_controller" {
+    cluster_name    = aws_eks_cluster.this.name
+    namespace       = "kube-system"
+    service_account = kubernetes_service_account.aws_load_balancer_controller.metadata[0].name
+    role_arn        = aws_iam_role.aws_load_balancer_controller.arn
+
+    depends_on = [
+        aws_eks_addon.pod_identity,
+        kubernetes_service_account.aws_load_balancer_controller,
+    ]
 }
 
 # # Mountpoint for Amazon S3 CSI 드라이버를 위한 IRSA
