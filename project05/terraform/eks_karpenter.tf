@@ -37,11 +37,6 @@ resource "helm_release" "karpenter" {
     }
 
     set {
-        name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
-        value = aws_iam_role.karpenter_controller.arn
-    }
-
-    set {
         name  = "settings.clusterName"
         value = aws_eks_cluster.this.name
     }
@@ -61,7 +56,7 @@ resource "helm_release" "karpenter" {
         aws_iam_role.karpenter_controller,
         aws_iam_role.karpenter_node,
         aws_iam_instance_profile.karpenter,
-        aws_iam_openid_connect_provider.this,
+        aws_eks_addon.pod_identity,
         aws_eks_node_group.default,
         kubernetes_config_map.aws_auth
     ]
