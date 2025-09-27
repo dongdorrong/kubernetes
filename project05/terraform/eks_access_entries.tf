@@ -46,7 +46,7 @@ resource "aws_eks_access_entry" "default_node_group" {
 resource "aws_eks_access_policy_association" "default_node_group" {
     cluster_name  = aws_eks_cluster.this.name
     principal_arn = aws_iam_role.default_node_group.arn
-    policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSNodeAccessPolicy"
+    policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSNodePolicy"
 
     access_scope {
         type = "cluster"
@@ -66,7 +66,7 @@ resource "aws_eks_access_entry" "karpenter_node" {
 resource "aws_eks_access_policy_association" "karpenter_node" {
     cluster_name  = aws_eks_cluster.this.name
     principal_arn = aws_iam_role.karpenter_node.arn
-    policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSNodeAccessPolicy"
+    policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSNodePolicy"
 
     access_scope {
         type = "cluster"
