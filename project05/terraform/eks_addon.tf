@@ -140,7 +140,7 @@ resource "kubernetes_manifest" "storageclass" {
 
 #     depends_on = [
 #         aws_eks_cluster.this,
-#         aws_iam_openid_connect_provider.this,
+#         aws_eks_addon.pod_identity,
 #         aws_eks_addon.coredns,
 #         aws_s3_bucket.app_data
 #     ]
