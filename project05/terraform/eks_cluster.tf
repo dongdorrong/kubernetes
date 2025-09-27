@@ -112,7 +112,8 @@ resource "aws_eks_node_group" "default" {
     depends_on = [
         aws_launch_template.default,
         aws_iam_role_policy_attachment.default_node_nodePolicy,
-        aws_iam_role_policy_attachment.default_node_cniPolicy,
+        # 2025-09-27 VPC CNI을 Pod Identity를 통해 관리하고 있어서, 의존성에서 제거 처리함.
+        # aws_iam_role_policy_attachment.default_node_cniPolicy,
         aws_iam_role_policy_attachment.default_node_registryPolicy,
         kubernetes_config_map.aws_auth
     ]
