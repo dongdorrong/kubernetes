@@ -12,7 +12,10 @@ data "aws_iam_policy_document" "pod_identity_assume_role" {
     ])
 
     statement {
-        actions = ["sts:AssumeRole"]
+        actions = [
+            "sts:AssumeRole",
+            "sts:TagSession",
+        ]
         effect  = "Allow"
 
         principals {
