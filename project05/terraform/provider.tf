@@ -13,7 +13,8 @@ provider "aws" {
 }
 
 # Kubernetes Provider 설정
-# EKS 클러스터의 Kubernetes API 서버와 통신하기 위한 설정
+# EKS 클러스터의 kubernetes API 서버와 통신하기 위한 설정
+# aws-auth ConfigMap 생성 및 관리에 사용됨
 provider "kubernetes" {
     host                   = aws_eks_cluster.this.endpoint
     cluster_ca_certificate = base64decode(aws_eks_cluster.this.certificate_authority[0].data)

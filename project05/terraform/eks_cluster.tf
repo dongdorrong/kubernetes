@@ -11,11 +11,6 @@ resource "aws_eks_cluster" "this" {
         security_group_ids      = [ aws_security_group.cluster_additional.id ]
     }
 
-    access_config {
-        authentication_mode = "API"
-        bootstrap_cluster_creator_admin_permissions = true
-    }
-
     depends_on = [
         aws_iam_role_policy_attachment.cluster_AmazonEKSClusterPolicy,
         aws_iam_role_policy_attachment.cluster_AmazonEKSServicePolicy
@@ -44,6 +39,44 @@ resource "aws_security_group" "cluster_additional" {
     tags = merge({
         Name = "${local.project_name}-cluster-additional-sg"
     })
+}
+
+# aws-auth ConfigMap 생성
+resource "kubernetes_config_map" "aws_auth" {
+    metadata {
+        name      = "aws-auth"
+        namespace = "kube-system"
+    }
+
+    data = {
+        mapRoles = yamlencode([
+            # Terraform 관리자 역할
+            {
+                rolearn  = data.aws_iam_role.terraform_admin.arn
+                username = "admin"
+                groups   = [ "system:masters" ]
+            },
+            # EKS 관리자 역할
+            {
+                rolearn  = data.aws_iam_role.eks_admin.arn
+                username = "admin"
+                groups   = [ "system:masters" ]
+            },
+            # 기본 노드 그룹 역할
+            {
+                rolearn  = aws_iam_role.default_node_group.arn
+                username = "system:node:{{EC2PrivateDNSName}}"
+                groups   = [ "system:bootstrappers", "system:nodes" ]
+            },
+            {
+                rolearn  = aws_iam_role.karpenter_node.arn
+                username = "system:node:{{EC2PrivateDNSName}}"
+                groups   = [ "system:bootstrappers", "system:nodes" ]
+            }
+        ])
+    }
+
+    depends_on = [ aws_eks_cluster.this ]
 }
 
 # EKS 기본 노드 그룹
@@ -79,7 +112,8 @@ resource "aws_eks_node_group" "default" {
         aws_launch_template.default,
         aws_iam_role_policy_attachment.default_node_nodePolicy,
         aws_iam_role_policy_attachment.default_node_cniPolicy,
-        aws_iam_role_policy_attachment.default_node_registryPolicy
+        aws_iam_role_policy_attachment.default_node_registryPolicy,
+        kubernetes_config_map.aws_auth
     ]
 }
 
@@ -134,4 +168,17 @@ resource "aws_security_group" "worker_default" {
         Name = "${local.project_name}-worker-node-sg"
         "karpenter.sh/discovery" = local.cluster_name
     })
+}
+
+# OIDC Provider 설정
+data "tls_certificate" "this" {
+    url = aws_eks_cluster.this.identity[0].oidc[0].issuer
+}
+
+resource "aws_iam_openid_connect_provider" "this" {
+    client_id_list  = [ "sts.amazonaws.com" ]
+    thumbprint_list = [ data.tls_certificate.this.certificates[0].sha1_fingerprint ]
+    url             = aws_eks_cluster.this.identity[0].oidc[0].issuer
+
+    depends_on      = [ aws_eks_cluster.this ]
 }
