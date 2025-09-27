@@ -117,17 +117,21 @@ resource "aws_eks_addon" "privateca_connector" {
 }
 
 # Mountpoint for Amazon S3 CSI 드라이버 애드온
-resource "aws_eks_addon" "mountpoint_s3_csi" {
-    cluster_name                = aws_eks_cluster.this.name
-    addon_name                  = "aws-mountpoint-s3-csi-driver"
-    resolve_conflicts_on_create = "OVERWRITE"
-    resolve_conflicts_on_update = "PRESERVE"
+# - https://github.com/awslabs/mountpoint-s3-csi-driver/blob/main/docs/INSTALL.md
+# - 2025-09-28 Pod Identity 방식으로 Credential 받아오지 못하는 이슈가 있어서 잠정 보류
+# resource "helm_release" "mountpoint_s3_csi" {
+#     name       = "aws-mountpoint-s3-csi-driver"
+#     repository = "https://awslabs.github.io/mountpoint-s3-csi-driver"
+#     chart      = "aws-mountpoint-s3-csi-driver"
+#     namespace  = "kube-system"
+#     upgrade_install  = true
 
-    depends_on = [
-      aws_eks_cluster.this,
-      aws_eks_addon.pod_identity,
-    ]
-}
+#     depends_on = [
+#       aws_iam_policy.mountpoint_s3_csi,
+#       aws_iam_role.mountpoint_s3_csi,
+#       aws_iam_role_policy_attachment.mountpoint_s3_csi
+#     ]
+# }
 
 # Amazon EFS CSI 드라이버 애드온
 resource "aws_eks_addon" "efs_csi" {

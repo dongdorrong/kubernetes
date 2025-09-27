@@ -153,32 +153,37 @@ resource "aws_eks_pod_identity_association" "privateca_connector" {
 }
 
 # Mountpoint for Amazon S3 CSI 드라이버를 위한 Pod Identity 역할
-resource "aws_iam_policy" "mountpoint_s3_csi" {
-    name   = "${local.project_name}-mountpoint-s3-csi-policy"
-    policy = file("${path.module}/manifests/mountpoint-s3-csi-policy.json")
-}
+# - 2025-09-28 Pod Identity 방식으로 Credential 받아오지 못하는 이슈가 있어서 잠정 보류
+# resource "aws_iam_policy" "mountpoint_s3_csi" {
+#     name = "${local.project_name}-mountpoint-s3-csi-policy"
+#     policy = templatefile("${path.module}/manifests/mountpoint-s3-csi-policy.json", {
+#       BUCKET_ARN = aws_s3_bucket.app_data.arn
+#     })
+# }
 
-resource "aws_iam_role" "mountpoint_s3_csi" {
-    name               = "${local.project_name}-mountpoint-s3-csi"
-    assume_role_policy = data.aws_iam_policy_document.pod_identity_assume_role["mountpoint_s3_csi"].json
-}
+# resource "aws_iam_role" "mountpoint_s3_csi" {
+#     name               = "${local.project_name}-mountpoint-s3-csi"
+#     assume_role_policy = data.aws_iam_policy_document.pod_identity_assume_role["mountpoint_s3_csi"].json
+# }
 
-resource "aws_iam_role_policy_attachment" "mountpoint_s3_csi" {
-    policy_arn = aws_iam_policy.mountpoint_s3_csi.arn
-    role       = aws_iam_role.mountpoint_s3_csi.name
-}
+# resource "aws_iam_role_policy_attachment" "mountpoint_s3_csi" {
+#     policy_arn = aws_iam_policy.mountpoint_s3_csi.arn
+#     role       = aws_iam_role.mountpoint_s3_csi.name
+# }
 
-resource "aws_eks_pod_identity_association" "mountpoint_s3_csi" {
-    cluster_name    = aws_eks_cluster.this.name
-    namespace       = "kube-system"
-    service_account = "mountpoint-s3-csi-controller-sa"
-    role_arn        = aws_iam_role.mountpoint_s3_csi.arn
+# resource "aws_eks_pod_identity_association" "mountpoint_s3_csi_controller" {
+#     cluster_name    = aws_eks_cluster.this.name
+#     namespace       = "kube-system"
+#     service_account = "s3-csi-driver-controller-sa"
+#     role_arn        = aws_iam_role.mountpoint_s3_csi.arn
+# }
 
-    depends_on = [
-      aws_eks_addon.pod_identity,
-      aws_eks_addon.mountpoint_s3_csi,
-    ]
-}
+# resource "aws_eks_pod_identity_association" "mountpoint_s3_csi_node" {
+#     cluster_name    = aws_eks_cluster.this.name
+#     namespace       = "kube-system"
+#     service_account = "s3-csi-driver-sa"
+#     role_arn        = aws_iam_role.mountpoint_s3_csi.arn
+# }
 
 # Amazon EFS CSI 드라이버를 위한 Pod Identity 역할
 resource "aws_iam_role" "efs_csi" {
