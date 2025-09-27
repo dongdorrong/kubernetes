@@ -39,7 +39,10 @@ resource "aws_iam_role_policy_attachment" "karpenter_node_ssm" {
 # Karpenter 컨트롤러 IAM 역할
 data "aws_iam_policy_document" "karpenter_pod_identity_assume_role" {
     statement {
-        actions = ["sts:AssumeRole"]
+        actions = [
+            "sts:AssumeRole",
+            "sts:TagSession",
+        ]
         effect  = "Allow"
 
         principals {
