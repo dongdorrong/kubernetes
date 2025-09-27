@@ -45,7 +45,6 @@ resource "aws_eks_addon" "ebs_csi" {
 }
 
 # EKS Pod Identity Agent 애드온
-# - IRSA를 대체하는 Pod Identity 사용을 위해 필수
 resource "aws_eks_addon" "pod_identity" {
     cluster_name                = aws_eks_cluster.this.name
     addon_name                  = "eks-pod-identity-agent"
