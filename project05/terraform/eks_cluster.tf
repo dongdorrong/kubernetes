@@ -68,6 +68,7 @@ resource "kubernetes_config_map" "aws_auth" {
                 username = "system:node:{{EC2PrivateDNSName}}"
                 groups   = [ "system:bootstrappers", "system:nodes" ]
             },
+            # Karpenter 노드 그룹 역할
             {
                 rolearn  = aws_iam_role.karpenter_node.arn
                 username = "system:node:{{EC2PrivateDNSName}}"
