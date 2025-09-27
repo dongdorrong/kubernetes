@@ -39,7 +39,7 @@ resource "aws_eks_access_policy_association" "eks_admin_cluster_admin" {
 resource "aws_eks_access_entry" "default_node_group" {
     cluster_name  = aws_eks_cluster.this.name
     principal_arn = aws_iam_role.default_node_group.arn
-    type          = "EC2_LINUX"
+    type          = "STANDARD"
 }
 
 resource "aws_eks_access_policy_association" "default_node_group" {
@@ -58,7 +58,7 @@ resource "aws_eks_access_policy_association" "default_node_group" {
 resource "aws_eks_access_entry" "karpenter_node" {
     cluster_name  = aws_eks_cluster.this.name
     principal_arn = aws_iam_role.karpenter_node.arn
-    type          = "EC2_LINUX"
+    type          = "STANDARD"
 }
 
 resource "aws_eks_access_policy_association" "karpenter_node" {
