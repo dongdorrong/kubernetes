@@ -11,6 +11,11 @@ resource "aws_eks_cluster" "this" {
         security_group_ids      = [ aws_security_group.cluster_additional.id ]
     }
 
+    access_config {
+        authentication_mode = "API"
+        bootstrap_cluster_creator_admin_permissions = true
+    }
+
     depends_on = [
         aws_iam_role_policy_attachment.cluster_AmazonEKSClusterPolicy,
         aws_iam_role_policy_attachment.cluster_AmazonEKSServicePolicy
@@ -74,8 +79,7 @@ resource "aws_eks_node_group" "default" {
         aws_launch_template.default,
         aws_iam_role_policy_attachment.default_node_nodePolicy,
         aws_iam_role_policy_attachment.default_node_cniPolicy,
-        aws_iam_role_policy_attachment.default_node_registryPolicy,
-        aws_eks_access_policy_association.default_node_group
+        aws_iam_role_policy_attachment.default_node_registryPolicy
     ]
 }
 
