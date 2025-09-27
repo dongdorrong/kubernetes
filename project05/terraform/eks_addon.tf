@@ -22,13 +22,11 @@ resource "aws_eks_addon" "coredns" {
 resource "aws_eks_addon" "vpc_cni" {
     cluster_name                = aws_eks_cluster.this.name
     addon_name                  = "vpc-cni"
-    service_account_role_arn    = aws_iam_role.vpc_cni.arn
     resolve_conflicts_on_create = "OVERWRITE"
     resolve_conflicts_on_update = "PRESERVE"
 
     depends_on = [
         aws_eks_cluster.this,
-        aws_iam_openid_connect_provider.this,
         aws_eks_addon.kube_proxy
     ]
 }
@@ -37,31 +35,28 @@ resource "aws_eks_addon" "vpc_cni" {
 resource "aws_eks_addon" "ebs_csi" {
     cluster_name                = aws_eks_cluster.this.name
     addon_name                  = "aws-ebs-csi-driver"
-    service_account_role_arn    = aws_iam_role.ebs_csi.arn
     resolve_conflicts_on_create = "OVERWRITE"
     resolve_conflicts_on_update = "PRESERVE"
 
     depends_on = [
         aws_eks_cluster.this,
-        aws_iam_openid_connect_provider.this,
         aws_eks_addon.coredns
     ]
 }
 
-# # EKS Pod Identity Agent 애드온
-# - IRSA의 새로운 대안(2023년 말 출시)으로 OIDC 불필요, 성능 향상
-# - 현재는 IRSA가 안정적이므로 보류
-# resource "aws_eks_addon" "pod_identity" {
-#     cluster_name                = aws_eks_cluster.this.name
-#     addon_name                  = "eks-pod-identity-agent"
-#     resolve_conflicts_on_create = "OVERWRITE"
-#     resolve_conflicts_on_update = "PRESERVE"
+# EKS Pod Identity Agent 애드온
+# - IRSA를 대체하는 Pod Identity 사용을 위해 필수
+resource "aws_eks_addon" "pod_identity" {
+    cluster_name                = aws_eks_cluster.this.name
+    addon_name                  = "eks-pod-identity-agent"
+    resolve_conflicts_on_create = "OVERWRITE"
+    resolve_conflicts_on_update = "PRESERVE"
 
-#     depends_on = [
-#         aws_eks_cluster.this,
-#         aws_eks_addon.coredns
-#     ]
-# }
+    depends_on = [
+        aws_eks_cluster.this,
+        aws_eks_addon.coredns
+    ]
+}
 
 # Metrics Server  애드온
 resource "aws_eks_addon" "metrics_server" {
@@ -116,7 +111,8 @@ resource "helm_release" "aws_load_balancer_controller" {
         aws_iam_policy.aws_load_balancer_controller,
         aws_iam_role.aws_load_balancer_controller,
         aws_iam_role_policy_attachment.aws_load_balancer_controller,
-        kubernetes_service_account.aws_load_balancer_controller
+        kubernetes_service_account.aws_load_balancer_controller,
+        aws_eks_pod_identity_association.aws_load_balancer_controller
     ]
 }
 
