@@ -41,7 +41,9 @@ resource "aws_iam_role" "hardeneks" {
 
 resource "aws_iam_policy" "hardeneks" {
     name   = "${local.project_name}-hardeneks-policy"
-    policy = file("${path.module}/manifests/hardeneks-policy.json")
+    policy = templatefile("${path.module}/manifests/hardeneks-policy.json", {
+      CLUSTER_ARN = aws_eks_cluster.this.arn
+    })
 }
 
 resource "aws_iam_role_policy_attachment" "hardeneks" {
