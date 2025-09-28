@@ -11,16 +11,17 @@ resource "aws_eks_cluster" "this" {
         security_group_ids      = [ aws_security_group.cluster_additional.id ]
     }
 
-    # access_config {
-    #     authentication_mode = "API_AND_CONFIG_MAP"
-    # }
+    access_config {
+        authentication_mode = "API_AND_CONFIG_MAP"
+    }
 
     # # 2025-09-28 cilium 설치 시, VPC CNI와 kube-proxy 설치를 방지하기 위해 설정
     # bootstrap_self_managed_addons = false
 
     depends_on = [
         aws_iam_role_policy_attachment.cluster_AmazonEKSClusterPolicy,
-        aws_iam_role_policy_attachment.cluster_AmazonEKSServicePolicy
+        aws_iam_role_policy_attachment.cluster_AmazonEKSServicePolicy,
+        aws_security_group.cluster_additional
     ]
 }
 
@@ -148,6 +149,8 @@ resource "aws_launch_template" "default" {
             local.node_tags
         )
     }
+
+    depends_on = [ aws_eks_cluster.this ]
 }
 
 # 기본 노드 보안 그룹
@@ -184,6 +187,8 @@ resource "aws_security_group" "worker_default" {
         Name = "${local.project_name}-worker-node-sg"
         "karpenter.sh/discovery" = local.cluster_name
     })
+
+    depends_on = [ aws_eks_cluster.this ]
 }
 
 # OIDC Provider 설정
@@ -192,9 +197,42 @@ data "tls_certificate" "this" {
 }
 
 resource "aws_iam_openid_connect_provider" "this" {
+    url             = aws_eks_cluster.this.identity[0].oidc[0].issuer
     client_id_list  = [ "sts.amazonaws.com" ]
     thumbprint_list = [ data.tls_certificate.this.certificates[0].sha1_fingerprint ]
-    url             = aws_eks_cluster.this.identity[0].oidc[0].issuer
-
     depends_on      = [ aws_eks_cluster.this ]
+}
+
+# Terraform 관리자 역할에 대한 EKS Access Entry 설정
+resource "aws_eks_access_entry" "terraform_admin" {
+    cluster_name      = aws_eks_cluster.this.name
+    principal_arn     = data.aws_iam_role.terraform_admin.arn
+}
+
+resource "aws_eks_access_policy_association" "terraform_admin_cluster_admin" {
+    cluster_name  = aws_eks_cluster.this.name
+    principal_arn = aws_eks_access_entry.terraform_admin.principal_arn
+
+    policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+
+    access_scope {
+        type = "cluster"
+    }
+}
+
+# EKS 관리자 역할에 대한 EKS Access Entry 설정
+resource "aws_eks_access_entry" "eks_admin" {
+    cluster_name      = aws_eks_cluster.this.name
+    principal_arn     = data.aws_iam_role.eks_admin.arn
+}
+
+resource "aws_eks_access_policy_association" "eks_admin" {
+    cluster_name  = aws_eks_cluster.this.name
+    principal_arn = aws_eks_access_entry.eks_admin.principal_arn
+
+    policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+
+    access_scope {
+        type = "cluster"
+    }
 }

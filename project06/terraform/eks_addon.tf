@@ -5,7 +5,10 @@ resource "aws_eks_addon" "kube_proxy" {
     resolve_conflicts_on_create = "OVERWRITE"
     resolve_conflicts_on_update = "PRESERVE"
 
-    depends_on = [aws_eks_cluster.this]
+    depends_on = [ 
+      aws_eks_cluster.this,
+      aws_eks_node_group.default
+    ]
 }
 
 # VPC CNI 애드온
@@ -16,7 +19,7 @@ resource "aws_eks_addon" "vpc_cni" {
     resolve_conflicts_on_update = "PRESERVE"
 
     depends_on = [
-      aws_eks_cluster.this
+      aws_eks_addon.kube_proxy
     ]
 }
 
@@ -27,7 +30,11 @@ resource "aws_eks_addon" "coredns" {
     resolve_conflicts_on_create = "OVERWRITE"
     resolve_conflicts_on_update = "PRESERVE"
 
-    depends_on = [aws_eks_cluster.this]
+    depends_on = [
+      aws_eks_cluster.this,
+      aws_eks_addon.kube_proxy,
+      aws_eks_addon.vpc_cni
+    ]
 }
 
 # EKS Pod Identity Agent 애드온
@@ -39,7 +46,9 @@ resource "aws_eks_addon" "pod_identity" {
 
     depends_on = [
       aws_eks_cluster.this,
-      aws_eks_addon.coredns,
+      aws_eks_addon.kube_proxy,
+      aws_eks_addon.vpc_cni,
+      aws_eks_addon.coredns
     ]
 }
 
@@ -50,10 +59,7 @@ resource "aws_eks_addon" "ebs_csi" {
     resolve_conflicts_on_create = "OVERWRITE"
     resolve_conflicts_on_update = "PRESERVE"
 
-    depends_on = [
-      aws_eks_cluster.this,
-      aws_eks_addon.coredns,
-    ]
+    depends_on = [ aws_eks_addon.pod_identity ]
 }
 
 # Metrics Server 애드온
@@ -63,7 +69,7 @@ resource "aws_eks_addon" "metrics_server" {
     resolve_conflicts_on_create = "OVERWRITE"
     resolve_conflicts_on_update = "PRESERVE"
 
-    depends_on = [aws_eks_cluster.this]
+    depends_on = [ aws_eks_addon.pod_identity ]
 }
 
 # AWS Network Flow Monitor 애드온
@@ -73,10 +79,7 @@ resource "aws_eks_addon" "network_flow_monitor" {
     resolve_conflicts_on_create = "OVERWRITE"
     resolve_conflicts_on_update = "PRESERVE"
 
-    depends_on = [
-      aws_eks_cluster.this,
-      aws_eks_addon.pod_identity,
-    ]
+    depends_on = [ aws_eks_addon.pod_identity ]
 }
 
 # 노드 모니터링 애드온
@@ -86,10 +89,7 @@ resource "aws_eks_addon" "node_monitoring" {
     resolve_conflicts_on_create = "OVERWRITE"
     resolve_conflicts_on_update = "PRESERVE"
 
-    depends_on = [
-      aws_eks_cluster.this,
-      aws_eks_addon.pod_identity,
-    ]
+    depends_on = [ aws_eks_addon.pod_identity ]
 }
 
 # CSI 스냅샷 컨트롤러 애드온
@@ -99,7 +99,7 @@ resource "aws_eks_addon" "snapshot_controller" {
     resolve_conflicts_on_create = "OVERWRITE"
     resolve_conflicts_on_update = "PRESERVE"
 
-    depends_on = [aws_eks_cluster.this]
+    depends_on = [ aws_eks_addon.pod_identity ]
 }
 
 # AWS Private CA Connector for Kubernetes 애드온
@@ -109,10 +109,7 @@ resource "aws_eks_addon" "privateca_connector" {
     resolve_conflicts_on_create = "OVERWRITE"
     resolve_conflicts_on_update = "PRESERVE"
 
-    depends_on = [
-      aws_eks_cluster.this,
-      aws_eks_addon.pod_identity,
-    ]
+    depends_on = [ aws_eks_addon.pod_identity ]
 }
 
 # Mountpoint for Amazon S3 CSI 드라이버 애드온
@@ -139,10 +136,7 @@ resource "aws_eks_addon" "efs_csi" {
     resolve_conflicts_on_create = "OVERWRITE"
     resolve_conflicts_on_update = "PRESERVE"
 
-    depends_on = [
-      aws_eks_cluster.this,
-      aws_eks_addon.pod_identity,
-    ]
+    depends_on = [ aws_eks_addon.pod_identity ]
 }
 
 # AWS Load Balancer Controller
@@ -179,6 +173,7 @@ resource "helm_release" "aws_load_balancer_controller" {
     }
 
     depends_on = [
+      aws_eks_addon.pod_identity,
       aws_iam_policy.aws_load_balancer_controller,
       aws_iam_role.aws_load_balancer_controller,
       aws_iam_role_policy_attachment.aws_load_balancer_controller,
@@ -190,8 +185,5 @@ resource "helm_release" "aws_load_balancer_controller" {
 # # StorageClass 생성
 # resource "kubernetes_manifest" "storageclass" {
 #     manifest = yamldecode(file("${path.module}/manifests/storageclass.yaml"))
-#     depends_on = [
-#       aws_eks_cluster.this,
-#       aws_eks_addon.ebs_csi,
-#     ]
+#     depends_on = [ aws_eks_addon.ebs_csi ]
 # }
