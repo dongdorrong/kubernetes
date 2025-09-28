@@ -31,6 +31,11 @@ spec:
         kind: EC2NodeClass
         name: default
       expireAfter: 720h # 30 * 24h = 720h
+      # startupTaints - Cilium 설치 시 사용
+      startupTaints:
+        - key: node.cilium.io/agent-not-ready
+          value: "true"
+          effect: NoExecute
   limits:
     cpu: "8"
     memory: 32Gi

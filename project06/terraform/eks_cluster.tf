@@ -11,6 +11,13 @@ resource "aws_eks_cluster" "this" {
         security_group_ids      = [ aws_security_group.cluster_additional.id ]
     }
 
+    # access_config {
+    #     authentication_mode = "API_AND_CONFIG_MAP"
+    # }
+
+    # # 2025-09-28 cilium 설치 시, VPC CNI와 kube-proxy 설치를 방지하기 위해 설정
+    # bootstrap_self_managed_addons = false
+
     depends_on = [
         aws_iam_role_policy_attachment.cluster_AmazonEKSClusterPolicy,
         aws_iam_role_policy_attachment.cluster_AmazonEKSServicePolicy
@@ -109,6 +116,13 @@ resource "aws_eks_node_group" "default" {
         name    = aws_launch_template.default.name
         version = aws_launch_template.default.default_version
     }
+
+    # # Cilium 설치 시 사용
+    # taint {
+    #     key    = "node.cilium.io/agent-not-ready"
+    #     value  = true
+    #     effect = "NO_EXECUTE"
+    # }
 
     depends_on = [
         aws_launch_template.default,

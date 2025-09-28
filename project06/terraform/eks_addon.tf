@@ -8,6 +8,18 @@ resource "aws_eks_addon" "kube_proxy" {
     depends_on = [aws_eks_cluster.this]
 }
 
+# VPC CNI 애드온
+resource "aws_eks_addon" "vpc_cni" {
+    cluster_name                = aws_eks_cluster.this.name
+    addon_name                  = "vpc-cni"
+    resolve_conflicts_on_create = "OVERWRITE"
+    resolve_conflicts_on_update = "PRESERVE"
+
+    depends_on = [
+      aws_eks_cluster.this
+    ]
+}
+
 # CoreDNS 애드온
 resource "aws_eks_addon" "coredns" {
     cluster_name                = aws_eks_cluster.this.name
@@ -28,19 +40,6 @@ resource "aws_eks_addon" "pod_identity" {
     depends_on = [
       aws_eks_cluster.this,
       aws_eks_addon.coredns,
-    ]
-}
-
-# VPC CNI 애드온
-resource "aws_eks_addon" "vpc_cni" {
-    cluster_name                = aws_eks_cluster.this.name
-    addon_name                  = "vpc-cni"
-    resolve_conflicts_on_create = "OVERWRITE"
-    resolve_conflicts_on_update = "PRESERVE"
-
-    depends_on = [
-      aws_eks_cluster.this,
-      aws_eks_addon.kube_proxy,
     ]
 }
 
@@ -188,11 +187,11 @@ resource "helm_release" "aws_load_balancer_controller" {
     ]
 }
 
-# StorageClass 생성
-resource "kubernetes_manifest" "storageclass" {
-    manifest = yamldecode(file("${path.module}/manifests/storageclass.yaml"))
-    depends_on = [
-      aws_eks_cluster.this,
-      aws_eks_addon.ebs_csi,
-    ]
-}
+# # StorageClass 생성
+# resource "kubernetes_manifest" "storageclass" {
+#     manifest = yamldecode(file("${path.module}/manifests/storageclass.yaml"))
+#     depends_on = [
+#       aws_eks_cluster.this,
+#       aws_eks_addon.ebs_csi,
+#     ]
+# }

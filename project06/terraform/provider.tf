@@ -1,4 +1,5 @@
 # AWS Provider 설정
+# - https://search.opentofu.org/provider/hashicorp/aws/latest
 provider "aws" {
   region  = "ap-northeast-2"
   profile = "private"
