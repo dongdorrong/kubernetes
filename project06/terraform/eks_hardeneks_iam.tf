@@ -44,6 +44,11 @@ resource "aws_iam_policy" "hardeneks" {
     policy = file("${path.module}/manifests/hardeneks-policy.json")
 }
 
+resource "aws_iam_role_policy_attachment" "hardeneks" {
+    role       = aws_iam_role.hardeneks.name
+    policy_arn = aws_iam_policy.hardeneks.arn
+}
+
 ############################################################
 # EKS Access Entry
 ############################################################
