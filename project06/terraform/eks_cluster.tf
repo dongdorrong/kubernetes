@@ -85,7 +85,13 @@ resource "kubernetes_config_map" "aws_auth" {
         ])
     }
 
-    depends_on = [ aws_eks_cluster.this ]
+    depends_on = [
+        aws_eks_cluster.this,
+        aws_eks_access_entry.terraform_admin,
+        aws_eks_access_policy_association.terraform_admin,
+        aws_eks_access_entry.eks_admin,
+        aws_eks_access_policy_association.eks_admin,
+    ]
 }
 
 # EKS 기본 노드 그룹
@@ -207,9 +213,13 @@ resource "aws_iam_openid_connect_provider" "this" {
 resource "aws_eks_access_entry" "terraform_admin" {
     cluster_name      = aws_eks_cluster.this.name
     principal_arn     = data.aws_iam_role.terraform_admin.arn
+
+    type              = "STANDARD"
+    user_name         = "terraform-admin"
+    kubernetes_groups = ["system:masters"]
 }
 
-resource "aws_eks_access_policy_association" "terraform_admin_cluster_admin" {
+resource "aws_eks_access_policy_association" "terraform_admin" {
     cluster_name  = aws_eks_cluster.this.name
     principal_arn = aws_eks_access_entry.terraform_admin.principal_arn
 
@@ -224,6 +234,10 @@ resource "aws_eks_access_policy_association" "terraform_admin_cluster_admin" {
 resource "aws_eks_access_entry" "eks_admin" {
     cluster_name      = aws_eks_cluster.this.name
     principal_arn     = data.aws_iam_role.eks_admin.arn
+
+    type              = "STANDARD"
+    user_name         = "eks-admin"
+    kubernetes_groups = ["system:masters"]
 }
 
 resource "aws_eks_access_policy_association" "eks_admin" {
