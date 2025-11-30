@@ -75,9 +75,14 @@ userData: |
 
 ### EKS 구성
 - **EKS v1.33**: 최신 쿠버네티스 버전
-- **EKS Addons**: kube-proxy, CoreDNS, VPC CNI, EBS CSI, Metrics Server
+- **EKS Addons**: kube-proxy, CoreDNS, VPC CNI, EBS CSI, Metrics Server, Mountpoint for Amazon S3 CSI
 - **IRSA**: IAM Roles for Service Accounts
-- **스토리지**: gp3 기본 스토리지 클래스
+- **스토리지**: gp3 기본 스토리지 클래스 + S3 기반 ReadWriteMany
+
+### Mountpoint for Amazon S3 CSI 요약
+- `terraform/eks_s3.tf`에서 전용 애플리케이션 버킷을 생성하고 `terraform/eks_addon_irsa.tf`에서 해당 버킷 전용 IAM 정책과 역할을 정의해 IRSA로 연결합니다.
+- `aws_eks_addon.s3_csi` 리소스가 `aws-mountpoint-s3-csi-driver` 애드온을 설치하며, 톨러레이션 값을 지정해 모든 노드에서 스케줄될 수 있게 했습니다.
+- 샘플 정적 PV/PVC/Pod 매니페스트(`terraform/samples/s3-mount-test.yaml`)를 참고해 버킷 이름·prefix만 실제 값으로 바꾸면 바로 RWX 볼륨 테스트가 가능합니다.
 
 ---
 
