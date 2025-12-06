@@ -81,36 +81,18 @@ resource "helm_release" "aws_load_balancer_controller" {
     chart      = "aws-load-balancer-controller"
     namespace  = "kube-system"
 
-    set {
-        name  = "region"
-        value = "ap-northeast-2"
-    }
+    values = [
+        yamlencode({
+            region      = "ap-northeast-2"
+            vpcId       = aws_vpc.main.id
+            clusterName = aws_eks_cluster.this.name
 
-    set {
-        name  = "vpcId"
-        value = aws_vpc.main.id
-    }
-
-    set {
-        name  = "clusterName"
-        value = aws_eks_cluster.this.name
-    }
-
-    set {
-        name  = "serviceAccount.create"
-        value = "false"
-    }
-
-    set {
-        name  = "serviceAccount.name"
-        value = "aws-load-balancer-controller"
-    }
-
-
-    set {
-        name  = "serviceAccount.name"
-        value = "aws-load-balancer-controller"
-    }
+            serviceAccount = {
+                create = false
+                name   = "aws-load-balancer-controller"
+            }
+        })
+    ]
 
     depends_on = [
         aws_iam_policy.aws_load_balancer_controller,
