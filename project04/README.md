@@ -1,305 +1,167 @@
 # Project 04 - Bottlerocket 기반 보안 강화 EKS 클러스터 🚀
 
-> 컨테이너 최적화 OS와 통합 보안 솔루션을 활용한 엔터프라이즈급 EKS 클러스터
+> Bottlerocket OS와 Karpenter를 중심으로 최소 구성의 안전한 EKS 클러스터를 테라폼으로 자동화합니다.
 
 ## 📋 프로젝트 개요
 
 - **클러스터 이름**: `bottlerocket`
 - **환경**: `dev`
 - **리전**: `ap-northeast-2`
-- **목적**: 최고 수준의 보안과 운영 효율성을 갖춘 프로덕션 환경 구축
+- **Terraform 상태**: `terraform/tfstate/terraform.tfstate`에 로컬 저장
+- **자격 증명 전략**: `setAssumeRoleCredential.sh`로 `terraform-assume-role`과 `eks-assume-role`을 12시간 세션으로 전환
 
 ---
 
-## 🎯 핵심 기능
+## 🧱 현재 Terraform 구성 요약
 
-### 🔒 **보안 최적화**
-- **Bottlerocket OS**: AWS의 컨테이너 전용 최적화 OS
-- **Keycloak**: OpenID Connect 기반 통합 인증 관리 시스템
-- **Trivy Operator**: 실시간 보안 취약점 스캐닝
-- **KMS 암호화**: 모든 스토리지 및 통신 암호화
-- **Network Policy**: 네트워크 레벨 보안 정책
-
-### 🕸️ **서비스 메시**
-- **Istio Service Mesh**: Ambient & Sidecar 모드 동시 지원
-- **mTLS**: 서비스 간 자동 암호화 통신
-- **트래픽 관리**: 지능형 로드 밸런싱 및 라우팅
-
-### 📊 **완전한 관측성**
-- **Prometheus**: 메트릭 수집 및 저장
-- **Grafana**: 시각화 및 대시보드
-- **Loki**: 로그 집계 시스템
-- **Alloy**: 통합 관측 데이터 수집 에이전트
-
-### ⚡ **지능형 자동화**
-- **Karpenter**: Bottlerocket 최적화 노드 자동 스케일링
-- **External DNS**: Route53 자동 DNS 관리
-- **Kubecost**: 비용 모니터링 및 최적화
+- Bottlerocket 기반 **EKS 1.33 클러스터** + 관리형 노드 그룹(Spot) + Karpenter 1.4.0
+- **2개 AZ**(2a/2c)에 Public/Private 서브넷, NAT 및 공용/내부 로드 밸런서 태그 자동 구성
+- **필수 애드온**: kube-proxy, CoreDNS, VPC CNI(IRSA), EBS CSI(IRSA), Metrics Server, AWS Load Balancer Controller(Helm) + `gp3` StorageClass 배포
+- **보안**: KMS 기반 Karpenter EBS 암호화, HardenEKS용 GitHub OIDC 연동, Terraform/EKS 관리자 Access Entry + aws-auth ConfigMap 싱크
+- **자동화**: Karpenter NodePool/NodeClass, Bottlerocket TOML(UserData) 템플릿, ALB Controller IAM 정책과 서비스 계정 자동 생성
 
 ---
 
-## 🔧 Bottlerocket OS 특징
+## 🔒 Bottlerocket OS 세부 구성
 
-### 핵심 특징
-- **AMI 설정**: `bottlerocket@latest` 별칭 사용
-- **블록 디바이스**: OS 볼륨(/dev/xvda, 100GB) + gp3 암호화
-- **TOML 설정**: 간단한 선언적 구성
-- **Admin Container**: 디버깅을 위한 관리 컨테이너 활성화
-- **SELinux**: 기본 활성화된 보안 정책
-- **읽기 전용 루트**: 불변 인프라 원칙 적용
+- 관리형 노드 그룹과 Karpenter `EC2NodeClass` 모두 Bottlerocket AMI 별칭(`bottlerocket@latest`)을 사용합니다.
+- `terraform/manifests/karpenter-nodeclass.yaml`은 100Gi gp3 루트 디스크, KMS 암호화, admin host container 활성화, QPS 최적화 등을 선언합니다.
+- 동일한 UserData를 기반으로 모든 노드가 읽기 전용 루트 파일 시스템과 SELinux 활성화된 상태로 부팅됩니다.
 
-### 성능 최적화
-```yaml
-userData: |
-  [settings.kubernetes]
-  kube-api-qps = 30
-  shutdown-grace-period = "30s"
-  
-  [settings.kubernetes.eviction-hard]
-  "memory.available" = "20%"
-  
-  [settings.host-containers.admin]
-  enabled = true
+```toml
+[settings.kubernetes]
+kube-api-qps = 30
+shutdown-grace-period = "30s"
+
+[settings.kubernetes.eviction-hard]
+"memory.available" = "20%"
+
+[settings.host-containers.admin]
+enabled = true
 ```
 
 ---
 
-## 🏗️ 인프라 아키텍처
+## 🏗️ 인프라 구성 상세
 
-### 네트워크 구성
-- **VPC**: `10.0.0.0/16` (ap-northeast-2a, ap-northeast-2c)
-- **Public Subnets**: `10.0.1.0/24`, `10.0.2.0/24` (ALB, NAT Gateway)
-- **Private Subnets**: `10.0.10.0/24`, `10.0.20.0/24` (EKS 워커 노드)
-- **Security Groups**: 클러스터/워커 노드 분리
-- **DNS**: dongdorrong.com 도메인 사용
+### 네트워크
+- `terraform/vpc.tf`는 `10.0.0.0/16` VPC, 2개의 Public/Private 서브넷, NAT/IGW/라우팅을 생성하며 서브넷에 LB/Karpenter 태그를 자동 부여합니다.
+- 클러스터 전용 추가 SG(`cluster_additional`)와 워커 SG(`worker_default`)를 분리해 제어 플레인 및 노드 통신 규칙을 명확히 관리합니다.
 
-### EKS 구성
-- **EKS v1.33**: 최신 쿠버네티스 버전
-- **EKS Addons**: kube-proxy, CoreDNS, VPC CNI, EBS CSI, Metrics Server, Mountpoint for Amazon S3 CSI
-- **IRSA**: IAM Roles for Service Accounts
-- **스토리지**: gp3 기본 스토리지 클래스 + S3 기반 ReadWriteMany
+### EKS & 노드
+- `terraform/eks_cluster.tf`는 EKS 1.33 클러스터를 생성하고 `API_AND_CONFIG_MAP` 인증 모드와 `aws-auth` ConfigMap을 동시에 구성합니다.
+- 기본 노드 그룹은 Spot `t3.medium` Bottlerocket 노드 2대를 유지하며, `aws_launch_template`에 커스텀 SG와 태그를 주입합니다.
+- `terraform/eks_karpenter*.tf`는 Karpenter 컨트롤러/노드 IAM, 인스턴스 프로필, Helm 릴리스를 선언하고 NodePool 만료/요구 사항을 YAML 템플릿으로 관리합니다.
 
-### Mountpoint for Amazon S3 CSI 요약
-- `terraform/eks_s3.tf`에서 전용 애플리케이션 버킷을 생성하고 `terraform/eks_addon_irsa.tf`에서 해당 버킷 전용 IAM 정책과 역할을 정의해 IRSA로 연결합니다.
-- `aws_eks_addon.s3_csi` 리소스가 `aws-mountpoint-s3-csi-driver` 애드온을 설치하며, 톨러레이션 값을 지정해 모든 노드에서 스케줄될 수 있게 했습니다.
-- 샘플 정적 PV/PVC/Pod 매니페스트(`terraform/samples/s3-mount-test.yaml`)를 참고해 버킷 이름·prefix만 실제 값으로 바꾸면 바로 RWX 볼륨 테스트가 가능합니다.
+### 애드온 & 스토리지
+- `terraform/eks_addon*.tf`에서 kube-proxy, CoreDNS, VPC CNI, EBS CSI, Metrics Server 애드온을 설치하고 필요한 IRSA 역할과 정책을 함께 정의합니다.
+- AWS Load Balancer Controller는 Helm으로 배포되며, `manifests/aws-load-balancer-controller-policy.json`을 기반으로 한 전용 IAM 역할/서비스 계정을 사용합니다.
+- `manifests/storageclass.yaml`을 이용해 기본 `gp3` StorageClass를 Kubernetes API에 직접 적용합니다.
+
+### HardenEKS 연동
+- `terraform/eks_hardeneks_iam.tf`는 GitHub Actions OIDC 공급자, HardenEKS 전용 IAM 역할/정책, EKS Access Entry, K8s ClusterRole/Binding을 한 번에 구성합니다.
+- 결과적으로 `hardeneks:runner` 그룹이 클러스터에 읽기 권한을 가지며, 추가 점검 파이프라인이 필요할 때 즉시 사용할 수 있습니다.
 
 ---
 
-## 📁 테라폼 구성
+## 📁 Terraform 디렉터리 가이드
 
 ```
 project04/
-├── setAssumeRoleCredential.sh    # AWS 자격 증명 관리
+├── setAssumeRoleCredential.sh         # AssumeRole 전환 스크립트 (jq 필요)
 └── terraform/
-    ├── main.tf                   # Terraform 메인 설정
-    ├── provider.tf               # AWS/Helm/Kubectl 프로바이더
-    ├── variables.tf              # 변수 정의
-    ├── locals.tf                 # 로컬 변수
-    ├── vpc.tf                    # VPC 네트워크 구성
-    ├── kms.tf                    # KMS 키 관리
-    ├── acm.tf                    # SSL 인증서 관리
-    ├── waf.tf                    # WAF 구성
-    ├── eks_cluster.tf            # EKS 클러스터 & 노드 그룹
-    ├── eks_cluster_iam.tf        # EKS 클러스터 IAM 역할
-    ├── eks_addon.tf              # EKS 애드온 (CNI, CSI, etc.)
-    ├── eks_addon_irsa.tf         # IRSA 기반 애드온 IAM
-    ├── eks_karpenter.tf          # Karpenter 설치
-    ├── eks_karpenter_iam.tf      # Karpenter IAM 역할
-    ├── iam_assume_role.tf        # AssumeRole 설정
-    ├── helm_management.tf        # Kubecost, External DNS
-    ├── helm_external_dns_iam.tf  # External DNS IAM
-    ├── helm_kubecost_iam.tf      # Kubecost IAM
-    ├── helm_istio_ambient.tf     # Istio Ambient Mesh
-    ├── helm_istio_sidecar.tf     # Istio Sidecar Mesh
-    ├── helm_monitoring.tf        # Prometheus, Grafana, Loki, Alloy
-    ├── helm_keycloak.tf          # Keycloak 인증 시스템
-    ├── helm_security.tf          # Trivy Operator 보안 스캐닝
-    └── manifests/                # 쿠버네티스 매니페스트
-        ├── alloy-configmap.hcl              # Grafana Alloy 설정
-        ├── aws-load-balancer-controller-policy.json
-        ├── karpenter-kms-policy.json        # Karpenter KMS 정책
-        ├── karpenter-nodeclass.yaml         # Bottlerocket NodeClass
-        ├── karpenter-nodepool.yaml          # Karpenter NodePool
-        ├── storageclass.yaml                # gp3 스토리지 클래스
-        ├── gateway-api.yaml                 # Gateway API 설정
-        ├── istio-gateway.yaml               # Istio Gateway
-        ├── ingress-for-addons.yaml          # 애드온용 Ingress
-        └── ingress-for-serivces.yaml        # 서비스용 Ingress
+    ├── main.tf / provider.tf          # 버전 및 프로바이더, 로컬 백엔드
+    ├── locals.tf / variables.tf       # 프로젝트/네트워크 공통 값
+    ├── vpc.tf                         # VPC·서브넷·NAT·라우팅
+    ├── kms.tf                         # Karpenter 전용 KMS 키
+    ├── eks_cluster*.tf                # EKS 본체, IAM, Access Entry, aws-auth
+    ├── eks_addon*.tf                  # EKS 애드온 + IRSA + ALB Controller
+    ├── eks_karpenter*.tf              # Karpenter Helm/IAM/NodePool
+    ├── eks_hardeneks_iam.tf           # HardenEKS용 GitHub OIDC + RBAC
+    ├── manifests/                     # IAM 정책, StorageClass, Karpenter 템플릿 등
+    └── samples/s3-mount-test.yaml     # Mountpoint S3 CSI 실험용 매니페스트
 ```
+
+> `helm_*.tf`, `waf.tf`, `eks_s3.tf` 등은 현재 주석 처리된 실험/추가 기능용 파일이지만, 역사와 템플릿을 보존하기 위해 함께 관리합니다.
 
 ---
 
-## 🚀 배포 가이드
+## 🚀 배포 절차
 
-### 사전 요구사항
-- AWS CLI 및 자격 증명 설정
-- Terraform >= 1.2.0
-- kubectl
-- helm
-- jq (AssumeRole 스크립트용)
+### 1. 사전 요구사항
+- AWS CLI, Terraform ≥ 1.2, kubectl, helm, jq
+- `~/.aws/credentials_cleanAssumeRoleCredential` 템플릿과 `private` 프로파일 사전 구성
 
-### 1. AWS IAM 역할 설정
+### 2. AssumeRole 전환
 ```bash
-cd project04/
-./setAssumeRoleCredential.sh
+cd project04
+./setAssumeRoleCredential.sh   # terraform 또는 eks 역할 선택
+aws sts get-caller-identity --profile private
 ```
 
-**IAM 역할 관리**:
-- **terraform-assume-role**: 인프라 관리용 역할 (12시간 세션)
-- **eks-assume-role**: EKS 클러스터 관리용 역할 (12시간 세션)
-
-### 2. 인프라 배포
+### 3. Terraform 실행
 ```bash
-cd terraform/
+cd terraform
 terraform init
 terraform plan
 terraform apply
 ```
 
-### 3. 클러스터 접속 설정
+### 4. kubeconfig 업데이트
 ```bash
-aws eks update-kubeconfig --region ap-northeast-2 --name bottlerocket --profile private
-```
-
-### 4. 배포 확인
-```bash
-# Bottlerocket 노드 확인
-kubectl get nodes -o=custom-columns=NODE:.metadata.name,OS-IMAGE:.status.nodeInfo.osImage
-
-# 전체 파드 상태 확인
-kubectl get pods -A
-
-# Karpenter 노드 확인
-kubectl get nodeclaims
-kubectl get nodepools
+aws eks update-kubeconfig \
+  --region ap-northeast-2 \
+  --name bottlerocket \
+  --profile private
 ```
 
 ---
 
-## 🔍 보안 검증
+## ✅ 배포 후 검증
 
-### Trivy Operator 확인
 ```bash
-# 보안 스캐닝 리포트 확인
-kubectl get vulnerabilityreports -A
-kubectl get configauditreports -A
-kubectl get clustercompliancereports
+# 노드 상태와 OS 확인 (기본 노드 그룹 + Karpenter 노드)
+kubectl get nodes -o wide
+kubectl get nodeclaims,nodepools
 
-# Trivy Operator 상태 확인
-kubectl get pods -n security
-kubectl logs -n security deployment/trivy-operator
+# 필수 애드온 및 ALB Controller
+aws eks list-addons --cluster-name bottlerocket --region ap-northeast-2 --profile private
+kubectl -n kube-system get deploy aws-load-balancer-controller
+
+# StorageClass 및 EBS CSI
+kubectl get storageclass gp3
+kubectl -n kube-system get ds ebs-csi-node
+
+# HardenEKS Access Entry 및 RBAC
+aws eks list-access-entries --cluster-name bottlerocket --region ap-northeast-2 --profile private \
+  | jq '.accessEntries[] | select(.userName=="hardeneks-runner")'
+kubectl get clusterrole hardeneks-runner
+kubectl get clusterrolebinding hardeneks-runner-binding
 ```
 
-### Keycloak 인증 확인
-```bash
-# Keycloak 파드 상태
-kubectl get pods -n keycloak
-
-# Keycloak 웹 인터페이스 접속
-kubectl port-forward -n keycloak svc/keycloak 8080:80
-# 브라우저에서 http://localhost:8080 접속
-```
-
-### 보안 정책 확인
-```bash
-# Network Policy 확인
-kubectl get networkpolicies -A
-
-# Security Context 확인
-kubectl get pods -o jsonpath='{range .items[*]}{.metadata.name}: {.spec.securityContext}{"\n"}{end}' -A
-```
+필요 시 `samples/s3-mount-test.yaml`을 참고해 Mountpoint S3 CSI 애드온을 재활성화한 뒤 RWX 워크로드를 검증할 수 있습니다.
 
 ---
 
-## 📊 모니터링 & 대시보드
+## 💤 주석 처리된 모듈 요약
 
-### Grafana 접속
-```bash
-kubectl port-forward -n monitoring svc/grafana 3000:80
-# 브라우저에서 http://localhost:3000 접속
-```
+- **서비스 메시 & 게이트웨이** (`helm_istio_*.tf`, `manifests/gateway-api.yaml`, `manifests/ingress-for-*.yaml`): Istio Ambient/Sidecar, Gateway API, WAF 연동 시 사용할 템플릿이 남아 있습니다.
+- **관측/로깅 스택** (`helm_monitoring.tf`, `manifests/alloy-configmap.hcl`): Prometheus, Grafana, Loki, Grafana Alloy 구성이 템플릿 형태로 보관되어 있습니다.
+- **보안 & 관리 애드온** (`helm_security.tf`, `helm_management.tf`, `helm_external_dns_iam.tf`, `helm_kubecost_iam.tf`): Trivy Operator, Falco, Cert-Manager, Kubecost, External-DNS, Velero 등의 선언이 필요 시 주석 해제만으로 재사용 가능합니다.
+- **애플리케이션 플랫폼** (`helm_deployment.tf`, `helm_keycloak.tf`, `helm_gitea.tf`): KEDA, Argo CD, Keycloak, Gitea와 같은 도구 설치 예제가 포함되어 있습니다.
+- **스토리지 실험** (`eks_s3.tf`, `manifests/s3-csi-policy.json`, `samples/s3-mount-test.yaml`): Mountpoint for Amazon S3 CSI 드라이버와 IAM 정책 템플릿이 존재합니다.
+- **네트워크 보안** (`waf.tf`, `acm.tf`): ACM 발급 스크립트와 WAF Web ACL 템플릿이 비활성화 상태로 남아 있습니다.
 
-### Prometheus 메트릭 확인
-```bash
-kubectl port-forward -n monitoring svc/prometheus-server 9090:80
-# 브라우저에서 http://localhost:9090 접속
-```
-
-### Kubecost 비용 모니터링
-```bash
-kubectl port-forward -n kubecost svc/kubecost-cost-analyzer 9090:9090
-# 브라우저에서 http://localhost:9090 접속
-```
+주석 블록을 해제하고 변수만 조정하면 모듈별로 빠르게 실험 환경을 확장할 수 있도록 작성되어 있으니, README의 “향후 우선과제”를 참고해 활성화 순서를 결정하세요.
 
 ---
 
-## ⚙️ 운영 관리
+## 🔭 향후 우선과제 제안
 
-### 노드 스케일링
-```bash
-# NodePool 수정으로 스케일링 조정
-kubectl edit nodepool default
-
-# 현재 노드 사용률 확인
-kubectl top nodes
-```
-
-### 로그 확인
-```bash
-# Loki 로그 쿼리
-kubectl port-forward -n monitoring svc/loki 3100:3100
-
-# Alloy 수집 상태 확인
-kubectl logs -n monitoring daemonset/alloy
-```
-
-### Istio 서비스 메시 관리
-```bash
-# Istio 상태 확인
-kubectl get pods -n istio-system
-
-# Gateway 및 VirtualService 확인
-kubectl get gateway,virtualservice -A
-
-# 서비스 메시 트래픽 확인
-kubectl get peerauthentications,destinationrules -A
-```
-
----
-
-## 🚫 리소스 제외 정책
-
-### 고자원 소모 애플리케이션
-다음 애플리케이션들은 쿠버네티스 클러스터가 아닌 **관리형 서비스 사용 권장**:
-- **PostgreSQL** → Amazon RDS
-- **Redis** → Amazon ElastiCache
-- **Kafka** → Amazon MSK
-- **Airflow** → Amazon MWAA
-
-### 경량화 원칙
-- 쿠버네티스 클러스터는 애플리케이션 워크로드에 최적화
-- 상태 저장(Stateful) 서비스는 관리형 서비스 우선 고려
-- 컴퓨팅 리소스 효율성 극대화
-
----
-
-## 🔧 개선 예정 사항
-
-### 🎯 Phase 1: 핵심 운영 기능
-- **Velero**: 백업 및 재해 복구 시스템 추가
-- **Cert-Manager**: 자동 SSL 인증서 관리 추가
-- **KEDA**: 이벤트 기반 자동 스케일링 구현
-
-### 🎯 Phase 2: 고가용성 구현
-- **Thanos**: Prometheus 고가용성 및 장기 보관 구현
-- **Loki Distributed**: SingleBinary → Distributed 모드 전환
-- **Multi-AZ**: 다중 가용 영역 고가용성 구성
-
-### 🎯 Phase 3: 고급 운영 기능
-- **Kubernetes Replicator**: Secret/ConfigMap 자동 복제
-- **Chaos Engineering**: 장애 주입 테스트 환경
-- **Policy as Code**: OPA/Gatekeeper 정책 자동화
+1. **Mountpoint S3 CSI & RWX 테스트**: `eks_s3.tf`와 관련 IRSA/애드온 블록을 활성화하고 `samples/s3-mount-test.yaml`로 곧바로 검증합니다.
+2. **관측 스택 가동**: `helm_monitoring.tf`와 `manifests/alloy-configmap.hcl`을 기반으로 Prometheus/Grafana/Loki/Alloy를 재도입하고, HardenEKS 리포트와 연계합니다.
+3. **서비스 메시 + 게이트웨이 보강**: `helm_istio_*.tf`와 WAF/ACM 템플릿을 활용해 Ambient/Sidecar 모드를 선택적으로 배포하고, Istio Ingress + ALB 조합을 정식화합니다.
+4. **보안 도구 세트**: Trivy Operator, Falco, Cert-Manager, External-DNS, Kubecost 등을 단계적으로 재활성화해 운영/보안 체계를 강화합니다.
 
 ---
 
@@ -308,8 +170,7 @@ kubectl get peerauthentications,destinationrules -A
 - [📖 메인 README](../README.md)
 - [📖 Project 03 (Amazon Linux 2023)](../project03/README.md)
 - [🔧 Bottlerocket 공식 문서](https://github.com/bottlerocket-os/bottlerocket)
-- [🔐 Keycloak 문서](https://www.keycloak.org/documentation)
-- [🛡️ Trivy Operator 문서](https://aquasecurity.github.io/trivy-operator/)
+- [🛡️ HardenEKS](https://github.com/aws-samples/harden-eks)
 - [🕸️ Istio 문서](https://istio.io/latest/docs/)
 - [📊 Grafana 대시보드](https://grafana.com/dashboards/)
 
@@ -317,8 +178,5 @@ kubectl get peerauthentications,destinationrules -A
 
 ## 🤝 기여 및 피드백
 
-이슈나 개선사항은 메인 저장소에 제출해 주세요:
-- 보안 취약점 발견 시 즉시 신고
-- 성능 최적화 제안
-- 신규 기능 요청
-- 문서 개선 사항 
+- 보안 취약점 · 성능 이슈 · 문서 개선 제안은 메인 저장소 이슈로 남겨 주세요.
+- 주석 처리된 모듈을 활성화했을 때의 추가 요구사항이나 버그가 있다면 재현 방법과 함께 공유해 주세요.
