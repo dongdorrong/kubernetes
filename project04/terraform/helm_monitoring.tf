@@ -19,8 +19,9 @@
 
 #             server = {
 #                 persistentVolume = {
-#                     enabled = false
-#                     size    = "10Gi"
+#                     enabled      = true
+#                     size         = "10Gi"
+#                     storageClass = "gp3"
 #                 }
 #                 retention   = "3d"
 
