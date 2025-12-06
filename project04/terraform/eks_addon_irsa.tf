@@ -102,42 +102,44 @@ resource "kubernetes_service_account" "aws_load_balancer_controller" {
             "eks.amazonaws.com/role-arn" = aws_iam_role.aws_load_balancer_controller.arn
         }
     }
+
+    depends_on = [ aws_eks_cluster.this ]
 }
 
-# Mountpoint for Amazon S3 CSI 드라이버를 위한 IRSA
-resource "aws_iam_policy" "s3_csi" {
-    name = "${local.project_name}-s3-csi-policy"
-    policy = templatefile("${path.module}/manifests/s3-csi-policy.json", {
-        s3_bucket_arn = aws_s3_bucket.app_data.arn
-    })
+# # Mountpoint for Amazon S3 CSI 드라이버를 위한 IRSA
+# resource "aws_iam_policy" "s3_csi" {
+#     name = "${local.project_name}-s3-csi-policy"
+#     policy = templatefile("${path.module}/manifests/s3-csi-policy.json", {
+#         s3_bucket_arn = aws_s3_bucket.app_data.arn
+#     })
 
-    depends_on = [ aws_s3_bucket.app_data ]
-}
+#     depends_on = [ aws_s3_bucket.app_data ]
+# }
 
-resource "aws_iam_role" "s3_csi" {
-    name = "${local.project_name}-s3-csi-role"
+# resource "aws_iam_role" "s3_csi" {
+#     name = "${local.project_name}-s3-csi-role"
 
-    assume_role_policy = jsonencode({
-        Version = "2012-10-17"
-        Statement = [
-            {
-                Effect = "Allow"
-                Principal = {
-                    Federated = aws_iam_openid_connect_provider.this.arn
-                }
-                Action = "sts:AssumeRoleWithWebIdentity"
-                Condition = {
-                    StringEquals = {
-                        "${replace(aws_eks_cluster.this.identity[0].oidc[0].issuer, "https://", "")}:aud": "sts.amazonaws.com",
-                        "${replace(aws_eks_cluster.this.identity[0].oidc[0].issuer, "https://", "")}:sub": "system:serviceaccount:kube-system:s3-csi-driver-sa"
-                    }
-                }
-            }
-        ]
-    })
-}
+#     assume_role_policy = jsonencode({
+#         Version = "2012-10-17"
+#         Statement = [
+#             {
+#                 Effect = "Allow"
+#                 Principal = {
+#                     Federated = aws_iam_openid_connect_provider.this.arn
+#                 }
+#                 Action = "sts:AssumeRoleWithWebIdentity"
+#                 Condition = {
+#                     StringEquals = {
+#                         "${replace(aws_eks_cluster.this.identity[0].oidc[0].issuer, "https://", "")}:aud": "sts.amazonaws.com",
+#                         "${replace(aws_eks_cluster.this.identity[0].oidc[0].issuer, "https://", "")}:sub": "system:serviceaccount:kube-system:s3-csi-driver-sa"
+#                     }
+#                 }
+#             }
+#         ]
+#     })
+# }
 
-resource "aws_iam_role_policy_attachment" "s3_csi" {
-    policy_arn = aws_iam_policy.s3_csi.arn
-    role       = aws_iam_role.s3_csi.name
-}
+# resource "aws_iam_role_policy_attachment" "s3_csi" {
+#     policy_arn = aws_iam_policy.s3_csi.arn
+#     role       = aws_iam_role.s3_csi.name
+# }

@@ -11,9 +11,15 @@ resource "aws_eks_cluster" "this" {
         security_group_ids      = [ aws_security_group.cluster_additional.id ]
     }
 
+    # 2025-12-06 hardeneks 활용을 위해 access_config 구문 설정
+    access_config {
+        authentication_mode = "API_AND_CONFIG_MAP"
+    }
+
     depends_on = [
         aws_iam_role_policy_attachment.cluster_AmazonEKSClusterPolicy,
-        aws_iam_role_policy_attachment.cluster_AmazonEKSServicePolicy
+        aws_iam_role_policy_attachment.cluster_AmazonEKSServicePolicy,
+        aws_security_group.cluster_additional
     ]
 }
 
@@ -76,7 +82,13 @@ resource "kubernetes_config_map" "aws_auth" {
         ])
     }
 
-    depends_on = [ aws_eks_cluster.this ]
+    depends_on = [
+        aws_eks_cluster.this,
+        aws_eks_access_entry.terraform_admin,
+        aws_eks_access_policy_association.terraform_admin,
+        aws_eks_access_entry.eks_admin,
+        aws_eks_access_policy_association.eks_admin,
+    ]
 }
 
 # EKS 기본 노드 그룹
@@ -132,6 +144,8 @@ resource "aws_launch_template" "default" {
             local.node_tags
         )
     }
+
+    depends_on = [ aws_eks_cluster.this ]
 }
 
 # 기본 노드 보안 그룹
@@ -168,6 +182,8 @@ resource "aws_security_group" "worker_default" {
         Name = "${local.project_name}-worker-node-sg"
         "karpenter.sh/discovery" = local.cluster_name
     })
+
+    depends_on = [ aws_eks_cluster.this ]
 }
 
 # OIDC Provider 설정

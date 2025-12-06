@@ -16,45 +16,34 @@ resource "helm_release" "karpenter" {
 
     upgrade_install = true
 
-    set {
-        name  = "controller.resources.requests.cpu"
-        value = 0.5
-    }
-
-    set {
-        name  = "controller.resources.requests.memory"
-        value = "1Gi"
-    }
-
-    set {
-        name  = "controller.resources.limits.cpu"
-        value = 0.5
-    }
-
-    set {
-        name  = "controller.resources.limits.memory"
-        value = "1Gi"
-    }
-
-    set {
-        name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
-        value = aws_iam_role.karpenter_controller.arn
-    }
-
-    set {
-        name  = "settings.clusterName"
-        value = aws_eks_cluster.this.name
-    }
-
-    set {
-        name  = "settings.aws.defaultInstanceProfile"
-        value = aws_iam_instance_profile.karpenter.name
-    }
-
-    set {
-        name  = "settings.interruptionQueueName"
-        value = "${aws_eks_cluster.this.name}-karpenter"
-    }
+    values = [
+        yamlencode({
+            controller = {
+                resources = {
+                    requests = {
+                        cpu    = "0.5"
+                        memory = "1Gi"
+                    }
+                    limits = {
+                        cpu    = "0.5"
+                        memory = "1Gi"
+                    }
+                }
+            }
+            serviceAccount = {
+                annotations = {
+                    "eks.amazonaws.com/role-arn" = aws_iam_role.karpenter_controller.arn
+                }
+            }
+            settings = {
+                clusterName = aws_eks_cluster.this.name
+                aws = {
+                    defaultInstanceProfile = aws_iam_instance_profile.karpenter.name
+                }
+                interruptionQueueName = "${aws_eks_cluster.this.name}-karpenter"
+            }
+        })
+    ]
 
     depends_on = [
         aws_eks_cluster.this,
