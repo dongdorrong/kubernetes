@@ -1,0 +1,104 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lb-test
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alb-demo
+  namespace: lb-test
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: alb-demo
+  template:
+    metadata:
+      labels:
+        app: alb-demo
+    spec:
+      containers:
+        - name: app
+          image: public.ecr.aws/docker/library/nginx:1.25
+          ports:
+            - containerPort: 80
+          env:
+            - name: DEMO
+              value: alb
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alb-demo
+  namespace: lb-test
+spec:
+  selector:
+    app: alb-demo
+  ports:
+    - port: 80
+      targetPort: 80
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: alb-demo
+  namespace: lb-test
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: alb-demo
+                port:
+                  number: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nlb-demo
+  namespace: lb-test
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nlb-demo
+  template:
+    metadata:
+      labels:
+        app: nlb-demo
+    spec:
+      containers:
+        - name: app
+          image: public.ecr.aws/docker/library/nginx:1.25
+          ports:
+            - containerPort: 80
+          env:
+            - name: DEMO
+              value: nlb
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nlb-demo
+  namespace: lb-test
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: external
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: ip
+    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+spec:
+  selector:
+    app: nlb-demo
+  ports:
+    - port: 80
+      targetPort: 80
+  type: LoadBalancer
