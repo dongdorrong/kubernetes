@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ebs-static-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: gp3
+  resources:
+    requests:
+      storage: 4Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ebs-static-pod
+spec:
+  containers:
+    - name: busybox
+      image: public.ecr.aws/docker/library/busybox:1.36
+      command:
+        - sh
+        - -c
+        - |
+          while true; do
+            date >> /data/log.txt
+            cat /data/log.txt
+            sleep 30
+          done
+      volumeMounts:
+        - name: ebs
+          mountPath: /data
+  volumes:
+    - name: ebs
+      persistentVolumeClaim:
+        claimName: ebs-static-pvc
