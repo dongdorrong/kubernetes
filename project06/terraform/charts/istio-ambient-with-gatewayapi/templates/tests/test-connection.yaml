@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "istio-ambient-with-gatewayapi.fullname" . }}-test-connection"
+  labels:
+    {{- include "istio-ambient-with-gatewayapi.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+spec:
+  containers:
+    - name: wget
+      image: busybox
+      command: ['wget']
+      args: ['{{ include "istio-ambient-with-gatewayapi.fullname" . }}:{{ .Values.service.port }}']
+  restartPolicy: Never

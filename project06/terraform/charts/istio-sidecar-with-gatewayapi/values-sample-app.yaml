@@ -1,0 +1,25 @@
+nameOverride: sample-app
+
+podAnnotations:
+  sidecar.istio.io/inject: "true"
+
+web:
+  indexPage:
+    content: |
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <title>sample-app</title>
+      </head>
+      <body>
+        <main>
+          <h1>sample-app</h1>
+          <p>Istio sidecar 모드에서 Gateway API 경로를 테스트하는 샘플입니다.</p>
+        </main>
+      </body>
+      </html>
+
+httpRoute:
+  hostnames:
+    - sample-app.dongdorrong.com
