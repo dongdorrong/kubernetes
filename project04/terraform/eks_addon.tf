@@ -98,7 +98,7 @@ resource "helm_release" "aws_load_balancer_controller" {
         aws_iam_policy.aws_load_balancer_controller,
         aws_iam_role.aws_load_balancer_controller,
         aws_iam_role_policy_attachment.aws_load_balancer_controller,
-        kubernetes_service_account.aws_load_balancer_controller
+        kubernetes_service_account_v1.aws_load_balancer_controller
     ]
 }
 

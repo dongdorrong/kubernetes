@@ -47,50 +47,6 @@ resource "aws_security_group" "cluster_additional" {
     })
 }
 
-# aws-auth ConfigMap 생성
-resource "kubernetes_config_map" "aws_auth" {
-    metadata {
-        name      = "aws-auth"
-        namespace = "kube-system"
-    }
-
-    data = {
-        mapRoles = yamlencode([
-            # Terraform 관리자 역할
-            {
-                rolearn  = data.aws_iam_role.terraform_admin.arn
-                username = "admin"
-                groups   = [ "system:masters" ]
-            },
-            # EKS 관리자 역할
-            {
-                rolearn  = data.aws_iam_role.eks_admin.arn
-                username = "admin"
-                groups   = [ "system:masters" ]
-            },
-            # 기본 노드 그룹 역할
-            {
-                rolearn  = aws_iam_role.default_node_group.arn
-                username = "system:node:{{EC2PrivateDNSName}}"
-                groups   = [ "system:bootstrappers", "system:nodes" ]
-            },
-            {
-                rolearn  = aws_iam_role.karpenter_node.arn
-                username = "system:node:{{EC2PrivateDNSName}}"
-                groups   = [ "system:bootstrappers", "system:nodes" ]
-            }
-        ])
-    }
-
-    depends_on = [
-        aws_eks_cluster.this,
-        aws_eks_access_entry.terraform_admin,
-        aws_eks_access_policy_association.terraform_admin,
-        aws_eks_access_entry.eks_admin,
-        aws_eks_access_policy_association.eks_admin,
-    ]
-}
-
 # EKS 기본 노드 그룹
 resource "aws_eks_node_group" "default" {
     # tags로 이름 지정 불가
@@ -125,7 +81,6 @@ resource "aws_eks_node_group" "default" {
         aws_iam_role_policy_attachment.default_node_nodePolicy,
         aws_iam_role_policy_attachment.default_node_cniPolicy,
         aws_iam_role_policy_attachment.default_node_registryPolicy,
-        kubernetes_config_map.aws_auth
     ]
 }
 
@@ -137,13 +92,13 @@ resource "aws_launch_template" "default" {
     # 기본 네트워크 설정
     vpc_security_group_ids = [ aws_security_group.worker_default.id ]
 
-    # 태그 설정
-    tag_specifications {
-        resource_type = "instance"
-        tags = merge(
-            local.node_tags
-        )
-    }
+  # 태그 설정
+  tag_specifications {
+    resource_type = "instance"
+    tags = merge(
+      local.node_tags
+    )
+  }
 
     depends_on = [ aws_eks_cluster.this ]
 }
@@ -152,31 +107,40 @@ resource "aws_launch_template" "default" {
 resource "aws_security_group" "worker_default" {
     vpc_id      = aws_vpc.main.id
 
-    # 노드 간 통신 허용
-    ingress {
-        description = "Allow nodes to communicate with each other"
-        from_port   = 0
-        to_port     = 0
-        protocol    = "-1"
-        self        = true
-    }
+  # 노드 간 통신 허용
+  ingress {
+    description = "Allow nodes to communicate with each other"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    self        = true
+  }
 
-    # 클러스터 컨트롤 플레인에서의 통신 허용
-    ingress {
-        description     = "Allow cluster control plane to communicate with nodes"
-        from_port       = 0
-        to_port         = 0
-        protocol        = "-1"
-        security_groups = [aws_eks_cluster.this.vpc_config[0].cluster_security_group_id]
-    }
+  # Gateway-API 활용 시, NLB가 NodePort로 트래픽을 전달할 수 있도록 통신 허용
+  ingress {
+    description = "Allow NodePort range (for internet-facing NLB)"
+    from_port   = 30000
+    to_port     = 32767
+    protocol    = "tcp"
+    cidr_blocks = local.gateway_nodeport_ingress_cidrs
+  }
 
-    # 아웃바운드 트래픽 허용
-    egress {
-        from_port   = 0
-        to_port     = 0
-        protocol    = "-1"
-        cidr_blocks = ["0.0.0.0/0"]
-    }
+  # 클러스터 컨트롤 플레인에서의 통신 허용
+  ingress {
+    description     = "Allow cluster control plane to communicate with nodes"
+    from_port       = 0
+    to_port         = 0
+    protocol        = "-1"
+    security_groups = [aws_eks_cluster.this.vpc_config[0].cluster_security_group_id]
+  }
+
+  # 아웃바운드 트래픽 허용
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 
     tags = merge({
         Name = "${local.project_name}-worker-node-sg"
@@ -188,7 +152,7 @@ resource "aws_security_group" "worker_default" {
 
 # OIDC Provider 설정
 data "tls_certificate" "this" {
-    url = aws_eks_cluster.this.identity[0].oidc[0].issuer
+  url = aws_eks_cluster.this.identity[0].oidc[0].issuer
 }
 
 resource "aws_iam_openid_connect_provider" "this" {

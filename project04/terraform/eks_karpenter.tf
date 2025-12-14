@@ -51,8 +51,7 @@ resource "helm_release" "karpenter" {
         aws_iam_role.karpenter_node,
         aws_iam_instance_profile.karpenter,
         aws_iam_openid_connect_provider.this,
-        aws_eks_node_group.default,
-        kubernetes_config_map.aws_auth
+        aws_eks_node_group.default
     ]
 }
 
@@ -60,8 +59,7 @@ resource "helm_release" "karpenter" {
 resource "kubectl_manifest" "karpenter_nodepool" {
     yaml_body = templatefile("${path.module}/manifests/karpenter-nodepool.yaml", {})
     depends_on = [
-        helm_release.karpenter,
-        kubernetes_config_map.aws_auth
+        helm_release.karpenter
     ]
 }
 
@@ -75,7 +73,6 @@ resource "kubectl_manifest" "karpenter_nodeclass" {
     })
     depends_on = [
         helm_release.karpenter,
-        kubernetes_config_map.aws_auth,
         aws_kms_key.karpenter
     ]
 }

@@ -81,7 +81,7 @@ resource "aws_eks_access_policy_association" "hardeneks" {
 ############################################################
 # K8s RBAC
 ############################################################
-resource "kubernetes_cluster_role" "hardeneks_runner" {
+resource "kubernetes_cluster_role_v1" "hardeneks_runner" {
     metadata {
         name = "hardeneks-runner"
     }
@@ -131,14 +131,14 @@ resource "kubernetes_cluster_role" "hardeneks_runner" {
     depends_on = [ aws_eks_access_policy_association.hardeneks ]
 }
 
-resource "kubernetes_cluster_role_binding" "hardeneks_runner" {
+resource "kubernetes_cluster_role_binding_v1" "hardeneks_runner" {
     metadata {
         name = "hardeneks-runner-binding"
     }
     role_ref {
         api_group = "rbac.authorization.k8s.io"
         kind      = "ClusterRole"
-        name      = kubernetes_cluster_role.hardeneks_runner.metadata[0].name
+        name      = kubernetes_cluster_role_v1.hardeneks_runner.metadata[0].name
     }
     subject {
         kind      = "Group"

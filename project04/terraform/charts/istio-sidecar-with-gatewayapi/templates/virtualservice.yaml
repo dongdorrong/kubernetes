@@ -1,0 +1,31 @@
+{{- if .Values.istio.virtualService.enabled -}}
+{{- $fullName := include "istio-sidecar-with-gatewayapi.fullname" . -}}
+{{- $svcFqdn := printf "%s.%s.svc.cluster.local" $fullName .Release.Namespace -}}
+{{- $hosts := .Values.istio.virtualService.hosts | default .Values.httpRoute.hostnames | default (list "example.com") -}}
+{{- $pathPrefix := .Values.istio.virtualService.pathPrefix | default "/" -}}
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- include "istio-sidecar-with-gatewayapi.labels" . | nindent 4 }}
+spec:
+  hosts:
+    {{- toYaml $hosts | nindent 4 }}
+  {{- with .Values.istio.virtualService.gateways }}
+  {{- if gt (len .) 0 }}
+  gateways:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
+  http:
+    - name: default
+      match:
+        - uri:
+            prefix: {{ $pathPrefix | quote }}
+      route:
+        - destination:
+            host: {{ $svcFqdn | quote }}
+            port:
+              number: {{ .Values.service.port }}
+{{- end }}

@@ -1,0 +1,59 @@
+# Attach HTTPRoute to an existing/shared Gateway managed outside this chart (e.g. Terraform).
+# This avoids creating an additional Gateway and therefore avoids an extra LoadBalancer/NLB.
+#
+# Your Terraform-managed Gateway:
+# - kind: Gateway
+# - name: gateway
+# - namespace: istio-system
+# - listener: http
+# - allowedRoutes: namespace label selector `shared-gateway-access=true`
+#
+# Usage:
+#   kubectl create ns demo --dry-run=client -o yaml | kubectl apply -f -
+#   kubectl label ns demo shared-gateway-access=true --overwrite
+#   helm upgrade --install demo . -n demo -f values-shared-gateway.yaml
+
+replicaCount: 1
+
+image:
+  repository: nginx
+  pullPolicy: IfNotPresent
+  tag: "1.27.2"
+
+serviceAccount:
+  create: true
+
+service:
+  type: ClusterIP
+  port: 80
+
+gateway:
+  enabled: false
+
+httpRoute:
+  enabled: true
+  parentRefs:
+    - name: gateway
+      namespace: istio-system
+      sectionName: http
+  hostnames:
+    - "app.dongdorrong.com"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+
+# Istio native resources (optional). Keep disabled to focus on Gateway API validation first.
+istio:
+  virtualService:
+    enabled: false
+    hosts:
+      - "app.dongdorrong.com"
+    gateways: []
+    pathPrefix: /
+
+  destinationRule:
+    enabled: false
+    host: ""
+    trafficPolicy: {}

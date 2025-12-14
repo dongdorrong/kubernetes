@@ -1,0 +1,65 @@
+# Opinionated values for Istio Gateway API (Gateway -> HTTPRoute -> Service)
+# NOTE: This file enables `gateway.enabled=true`, so Istio will typically provision a new
+#       LoadBalancer Service for this Gateway (on EKS this usually means an additional NLB).
+#       If you already manage a shared Gateway via Terraform, prefer `values-shared-gateway.yaml`.
+# Usage:
+#   helm upgrade --install demo . -n demo --create-namespace -f values-gatewayapi.yaml
+#
+# 1) Route53: create an A/AAAA ALIAS (or CNAME) record for `httpRoute.hostnames[0]`
+#    pointing to the LoadBalancer that Istio provisions for the Gateway.
+# 2) Verify:
+#    curl -H "Host: <hostname>" http://<LB_DNS_NAME>/
+
+replicaCount: 1
+
+image:
+  repository: nginx
+  pullPolicy: IfNotPresent
+  tag: "1.27.2"
+
+serviceAccount:
+  create: true
+
+service:
+  type: ClusterIP
+  port: 80
+
+gateway:
+  enabled: true
+  gatewayClassName: istio
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+    service.beta.kubernetes.io/aws-load-balancer-attributes: "load_balancing.cross_zone.enabled=true"
+  listeners:
+    - name: http
+      hostname: "app.dongdorrong.com"
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Same
+
+httpRoute:
+  enabled: true
+  parentRefs: []
+  hostnames:
+    - "app.dongdorrong.com"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+
+# Istio native resources (optional). Keep disabled to focus on Gateway API validation first.
+istio:
+  virtualService:
+    enabled: false
+    hosts:
+      - "app.dongdorrong.com"
+    gateways: []
+    pathPrefix: /
+
+  destinationRule:
+    enabled: false
+    host: ""
+    trafficPolicy: {}
