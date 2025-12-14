@@ -143,9 +143,42 @@ kubectl get clusterrolebinding hardeneks-runner-binding
 
 ---
 
+## 🧪 Istio + Gateway API 통신 테스트 (Sidecar / Ambient)
+
+오늘은 Istio 기반 환경에서 **Gateway API(`Gateway`/`HTTPRoute`)로 외부 트래픽이 애플리케이션까지 정상 도달하는지**를 검증했습니다.
+
+### 성공 조건(체크리스트)
+
+- `HTTPRoute` 상태가 `Accepted=True`, `ResolvedRefs=True` (Ambient 환경이면 `ResolvedWaypoints=True`까지 확인되는 경우가 많음)
+- 외부에서 LoadBalancer 주소로 요청했을 때 응답 헤더에 `server: istio-envoy`가 포함됨
+- 최종 백엔드(샘플 nginx) 응답을 받음
+
+### 테스트 실행
+
+Sidecar:
+
+```bash
+cd terraform/charts/istio-sidecar-with-gatewayapi
+APP_HOSTNAME=app.dongdorrong.com ./test-gatewayapi.sh
+```
+
+Ambient:
+
+```bash
+cd terraform/charts/istio-ambient-with-gatewayapi
+APP_HOSTNAME=app.dongdorrong.com ./test-gatewayapi.sh
+```
+
+### 자주 겪는 이슈(요약)
+
+- **NLB DNS 전파 지연**: 생성 직후 `Could not resolve host`가 잠깐 발생할 수 있어 몇 분 대기 후 재시도 필요
+- **`curl` timeout**: NLB → 노드 NodePort 경로에서 워커 노드 방화벽/보안그룹 인바운드(NodePort 범위) 차단 시 발생 가능
+
+---
+
 ## 💤 주석 처리된 모듈 요약
 
-- **서비스 메시 & 게이트웨이** (`helm_istio_*.tf`, `manifests/gateway-api.yaml`, `manifests/ingress-for-*.yaml`): Istio Ambient/Sidecar, Gateway API, WAF 연동 시 사용할 템플릿이 남아 있습니다.
+- **서비스 메시 & 게이트웨이** (`helm_istio_*.tf`, `manifests/gateway-api.yaml`, `manifests/ingress-for-*.yaml`, `terraform/charts/istio-*-with-gatewayapi`): Istio Ambient/Sidecar + Gateway API 기반 통신 테스트용 구성/차트가 포함되어 있습니다.
 - **관측/로깅 스택** (`helm_monitoring.tf`, `manifests/alloy-configmap.hcl`): Prometheus, Grafana, Loki, Grafana Alloy 구성이 템플릿 형태로 보관되어 있습니다.
 - **보안 & 관리 애드온** (`helm_security.tf`, `helm_management.tf`, `helm_external_dns_iam.tf`, `helm_kubecost_iam.tf`): Trivy Operator, Falco, Cert-Manager, Kubecost, External-DNS, Velero 등의 선언이 필요 시 주석 해제만으로 재사용 가능합니다.
 - **애플리케이션 플랫폼** (`helm_deployment.tf`, `helm_keycloak.tf`, `helm_gitea.tf`): KEDA, Argo CD, Keycloak, Gitea와 같은 도구 설치 예제가 포함되어 있습니다.
