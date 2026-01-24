@@ -44,6 +44,87 @@ locals {
     for arn in var.admin_principal_arns : can(regex("^arn:aws:sts::\\d+:assumed-role/.+/.+$", arn)) ? "arn:aws:iam::${element(split(":", arn), 4)}:role/${element(split("/", element(split(":", arn), 5)), 1)}" : arn
   ] : [local.default_admin_arn]
 
+  ssm_endpoint_services = var.ssm_endpoints_enabled ? {
+    ssm         = "com.amazonaws.${local.region}.ssm"
+    ssmmessages = "com.amazonaws.${local.region}.ssmmessages"
+    ec2messages = "com.amazonaws.${local.region}.ec2messages"
+  } : {}
+
+  ssm_user_data = <<-EOF
+#!/bin/bash
+set -euo pipefail
+
+if command -v dnf >/dev/null 2>&1; then
+  dnf install -y amazon-ssm-agent git k9s awscli || true
+elif command -v yum >/dev/null 2>&1; then
+  yum install -y amazon-ssm-agent git k9s awscli || true
+fi
+
+if command -v apt >/dev/null 2>&1; then
+  apt update -y || true
+  apt install -y wget || true
+  wget https://github.com/derailed/k9s/releases/latest/download/k9s_linux_amd64.deb || true
+  apt install -y ./k9s_linux_amd64.deb || true
+  rm -f ./k9s_linux_amd64.deb || true
+fi
+
+if ! command -v k9s >/dev/null 2>&1; then
+  WORKDIR="/home/ec2-user"
+  if [ ! -d "$${WORKDIR}" ]; then
+    WORKDIR="/root"
+  fi
+  K9S_URL_BASE="https://github.com/derailed/k9s/releases/latest/download/"
+  K9S_URL_FILE="k9s_Linux_amd64.tar.gz"
+  curl -L -o "$${WORKDIR}/k9s.tar.gz" "$${K9S_URL_BASE}$${K9S_URL_FILE}"
+  tar -xzf "$${WORKDIR}/k9s.tar.gz" -C "$${WORKDIR}"
+  install -o root -g root -m 0755 "$${WORKDIR}/k9s" /usr/local/bin/k9s
+  rm -f "$${WORKDIR}/k9s.tar.gz" "$${WORKDIR}/k9s"
+fi
+
+systemctl enable --now amazon-ssm-agent || true
+
+if ! command -v helm >/dev/null 2>&1; then
+  WORKDIR="/home/ec2-user"
+  if [ ! -d "$${WORKDIR}" ]; then
+    WORKDIR="/root"
+  fi
+  curl -fsSL -o "$${WORKDIR}/get_helm.sh" https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4
+  chmod 700 "$${WORKDIR}/get_helm.sh"
+  "$${WORKDIR}/get_helm.sh"
+fi
+
+if ! command -v kubectl >/dev/null 2>&1; then
+  WORKDIR="/home/ec2-user"
+  if [ ! -d "$${WORKDIR}" ]; then
+    WORKDIR="/root"
+  fi
+  KUBECTL_VERSION="$(curl -L -s https://dl.k8s.io/release/stable.txt)"
+  curl -L -o "$${WORKDIR}/kubectl" "https://dl.k8s.io/release/$${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+  install -o root -g root -m 0755 "$${WORKDIR}/kubectl" /usr/local/bin/kubectl
+fi
+
+WORKDIR="/home/ec2-user"
+if [ ! -d "$${WORKDIR}" ]; then
+  WORKDIR="/root"
+fi
+if [ ! -d "$${WORKDIR}/kubernetes" ]; then
+  git clone https://github.com/dongdorrong/kubernetes.git "$${WORKDIR}/kubernetes" || true
+fi
+
+if command -v aws >/dev/null 2>&1; then
+  if id -u ec2-user >/dev/null 2>&1; then
+    TARGET_USER="ec2-user"
+    TARGET_HOME="/home/ec2-user"
+  else
+    TARGET_USER="root"
+    TARGET_HOME="/root"
+  fi
+  mkdir -p "$${TARGET_HOME}/.kube"
+  aws eks update-kubeconfig --name ${local.cluster_name} --region ${local.region} --kubeconfig "$${TARGET_HOME}/.kube/config" || true
+  chown -R "$${TARGET_USER}:$${TARGET_USER}" "$${TARGET_HOME}/.kube" || true
+fi
+EOF
+
   node_name_format = "${local.cluster_name}-node"
   node_tags = {
     Name = local.node_name_format

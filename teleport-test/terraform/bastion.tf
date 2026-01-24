@@ -25,6 +25,24 @@ resource "aws_iam_role_policy_attachment" "bastion_ssm" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
+resource "aws_iam_role_policy" "bastion_eks_describe" {
+  count = local.bastion_enabled ? 1 : 0
+
+  name = "${local.project_name}-bastion-eks-describe"
+  role = aws_iam_role.bastion_ssm[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["eks:DescribeCluster"]
+        Resource = aws_eks_cluster.this.arn
+      }
+    ]
+  })
+}
+
 resource "aws_iam_instance_profile" "bastion_ssm" {
   count = local.bastion_enabled ? 1 : 0
 
@@ -62,6 +80,7 @@ resource "aws_instance" "bastion" {
   key_name               = local.bastion_key_name
 
   associate_public_ip_address = false
+  user_data                   = local.ssm_user_data
 
   tags = {
     Name = "${local.project_name}-bastion"

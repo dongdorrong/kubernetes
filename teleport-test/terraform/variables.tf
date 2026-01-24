@@ -169,7 +169,7 @@ variable "ec2_key_name" {
 variable "bastion_enabled" {
   description = "Whether to create a private bastion instance for SSM access"
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "bastion_instance_type" {
@@ -182,4 +182,10 @@ variable "bastion_key_name" {
   description = "Bastion EC2 key pair name (optional)"
   type        = string
   default     = ""
+}
+
+variable "ssm_endpoints_enabled" {
+  description = "Whether to create VPC interface endpoints for SSM"
+  type        = bool
+  default     = true
 }

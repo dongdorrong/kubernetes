@@ -50,6 +50,7 @@ resource "aws_instance" "teleport_node" {
   vpc_security_group_ids = [aws_security_group.ec2_node[0].id]
   iam_instance_profile   = aws_iam_instance_profile.ec2_ssm[0].name
   key_name               = local.ec2_key_name
+  user_data              = local.ssm_user_data
 
   tags = {
     Name = "${local.project_name}-teleport-node"
