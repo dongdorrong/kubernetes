@@ -1,0 +1,19 @@
+roles: "kube,db"
+proxyAddr: "teleport.example.com:443"
+
+joinParams:
+  method: "token"
+  tokenName: "REPLACE_WITH_JOIN_TOKEN"
+
+kubeClusterName: "teleport-test"
+
+# Static database registration example
+# Replace uri and region with your RDS endpoint and region.
+databases:
+  - name: "teleport-rds"
+    uri: "REPLACE_WITH_RDS_ENDPOINT:5432"
+    protocol: "postgres"
+    aws:
+      region: "ap-northeast-2"
+    static_labels:
+      env: "dev"

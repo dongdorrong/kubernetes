@@ -1,0 +1,8 @@
+clusterName: "teleport.example.com"
+kubeClusterName: "teleport-test"
+
+authentication:
+  type: local
+
+service:
+  type: LoadBalancer
