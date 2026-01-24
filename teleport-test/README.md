@@ -55,7 +55,10 @@ teleport-test/
 │   ├── vpc.tf
 │   ├── network_core.tf
 │   ├── network_teleport.tf
+│   ├── network_ssm_endpoints.tf
 │   ├── bastion.tf
+│   ├── eks_addon_irsa.tf
+│   ├── eks_addon.tf
 │   ├── eks_cluster_iam.tf
 │   ├── eks_cluster.tf
 │   ├── eks_access.tf
@@ -103,7 +106,7 @@ tofu apply -var 'bastion_enabled=true'
 tofu output bastion_ssm_start_session
 ```
 
-출력된 `aws ssm start-session`으로 접속한 뒤, 베스천에 `awscli/kubectl/helm/tofu`를 설치해 작업합니다.
+출력된 `aws ssm start-session`으로 접속한 뒤, 베스천에 `awscli/kubectl/helm/tofu`를 설치해 작업합니다. 프라이빗 베스천은 SSM VPC 엔드포인트가 필요하며 기본으로 생성됩니다(`ssm_endpoints_enabled=true`).
 
 SSM 접속 예시:
 ```bash
@@ -118,6 +121,7 @@ aws eks update-kubeconfig --name <cluster_name>
 ```
 
 `tofu output kubeconfig_command`를 그대로 사용해도 됩니다.
+베스천을 쓰는 경우 user_data가 `/home/ec2-user/.kube/config`에 자동 생성합니다.
 
 ### 4) Teleport Cluster 설치
 
@@ -126,7 +130,7 @@ helm repo add teleport https://charts.releases.teleport.dev
 helm repo update
 
 helm install teleport-cluster teleport/teleport-cluster \
-  -f ./manifest/teleport-cluster-values.yaml
+  -f ~/kubernetes/teleport-test/terraform/manifest/teleport-cluster-values.yaml
 ```
 
 - `clusterName`: Teleport 접속용 FQDN
@@ -148,7 +152,7 @@ kubectl -n default exec -it deploy/teleport-cluster-auth -- tctl tokens add --ty
 3) 에이전트 설치
 ```bash
 helm install teleport-agent teleport/teleport-kube-agent \
-  -f ./manifest/teleport-kube-agent-values.yaml
+  -f ~/kubernetes/teleport-test/terraform/manifest/teleport-kube-agent-values.yaml
 ```
 
 ### 6) Node 실행 방식 (EC2 에이전트)
