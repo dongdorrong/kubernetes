@@ -165,3 +165,21 @@ variable "ec2_key_name" {
   type        = string
   default     = ""
 }
+
+variable "bastion_enabled" {
+  description = "Whether to create a private bastion instance for SSM access"
+  type        = bool
+  default     = false
+}
+
+variable "bastion_instance_type" {
+  description = "Bastion instance type"
+  type        = string
+  default     = ""
+}
+
+variable "bastion_key_name" {
+  description = "Bastion EC2 key pair name (optional)"
+  type        = string
+  default     = ""
+}

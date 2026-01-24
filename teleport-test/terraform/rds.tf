@@ -13,30 +13,6 @@ resource "aws_db_subnet_group" "main" {
   }
 }
 
-resource "aws_security_group" "rds" {
-  name        = "${local.project_name}-rds"
-  description = "RDS security group"
-  vpc_id      = aws_vpc.main.id
-
-  ingress {
-    from_port       = local.rds_port
-    to_port         = local.rds_port
-    protocol        = "tcp"
-    security_groups = [aws_security_group.worker_default.id]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name = "${local.project_name}-rds-sg"
-  }
-}
-
 resource "aws_db_instance" "teleport" {
   identifier = "${local.project_name}-db"
 

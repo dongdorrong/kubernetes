@@ -25,7 +25,7 @@ locals {
   node_max_size       = var.node_max_size > 0 ? var.node_max_size : 3
 
   rds_engine                = var.rds_engine != "" ? var.rds_engine : "postgres"
-  rds_engine_version        = var.rds_engine_version != "" ? var.rds_engine_version : "15.4"
+  rds_engine_version        = var.rds_engine_version != "" ? var.rds_engine_version : data.aws_rds_engine_version.postgres_default.version
   rds_instance_class        = var.rds_instance_class != "" ? var.rds_instance_class : "db.t3.small"
   rds_allocated_storage     = var.rds_allocated_storage > 0 ? var.rds_allocated_storage : 20
   rds_db_name               = var.rds_db_name != "" ? var.rds_db_name : "teleport"
@@ -34,7 +34,15 @@ locals {
   rds_multi_az              = var.rds_multi_az
   rds_backup_retention_days = var.rds_backup_retention_days > 0 ? var.rds_backup_retention_days : 7
 
-  admin_principal_arns = length(var.admin_principal_arns) > 0 ? var.admin_principal_arns : [data.aws_caller_identity.current.arn]
+  caller_arn              = data.aws_caller_identity.current.arn
+  caller_is_assumed_role  = can(regex("^arn:aws:sts::\\d+:assumed-role/.+/.+$", local.caller_arn))
+  caller_account_id       = local.caller_is_assumed_role ? element(split(":", local.caller_arn), 4) : null
+  caller_assumed_resource = local.caller_is_assumed_role ? element(split(":", local.caller_arn), 5) : null
+  caller_role_name        = local.caller_is_assumed_role ? element(split("/", local.caller_assumed_resource), 1) : null
+  default_admin_arn       = local.caller_is_assumed_role ? "arn:aws:iam::${local.caller_account_id}:role/${local.caller_role_name}" : local.caller_arn
+  admin_principal_arns = length(var.admin_principal_arns) > 0 ? [
+    for arn in var.admin_principal_arns : can(regex("^arn:aws:sts::\\d+:assumed-role/.+/.+$", arn)) ? "arn:aws:iam::${element(split(":", arn), 4)}:role/${element(split("/", element(split(":", arn), 5)), 1)}" : arn
+  ] : [local.default_admin_arn]
 
   node_name_format = "${local.cluster_name}-node"
   node_tags = {
@@ -44,4 +52,8 @@ locals {
   ec2_enabled       = var.ec2_enabled
   ec2_instance_type = var.ec2_instance_type != "" ? var.ec2_instance_type : "t3.micro"
   ec2_key_name      = var.ec2_key_name != "" ? var.ec2_key_name : null
+
+  bastion_enabled       = var.bastion_enabled
+  bastion_instance_type = var.bastion_instance_type != "" ? var.bastion_instance_type : "t3.micro"
+  bastion_key_name      = var.bastion_key_name != "" ? var.bastion_key_name : null
 }

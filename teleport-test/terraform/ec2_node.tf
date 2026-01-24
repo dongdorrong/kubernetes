@@ -41,25 +41,6 @@ resource "aws_iam_instance_profile" "ec2_ssm" {
   role = aws_iam_role.ec2_ssm[0].name
 }
 
-resource "aws_security_group" "ec2_node" {
-  count = local.ec2_enabled ? 1 : 0
-
-  name        = "${local.project_name}-ec2-node"
-  description = "Teleport node EC2 security group"
-  vpc_id      = aws_vpc.main.id
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name = "${local.project_name}-ec2-node-sg"
-  }
-}
-
 resource "aws_instance" "teleport_node" {
   count = local.ec2_enabled ? 1 : 0
 

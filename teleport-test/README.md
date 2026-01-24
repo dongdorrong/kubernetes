@@ -49,9 +49,13 @@ teleport-test/
 ├── terraform/
 │   ├── main.tf
 │   ├── provider.tf
+│   ├── data_sources.tf
 │   ├── locals.tf
 │   ├── variables.tf
 │   ├── vpc.tf
+│   ├── network_core.tf
+│   ├── network_teleport.tf
+│   ├── bastion.tf
 │   ├── eks_cluster_iam.tf
 │   ├── eks_cluster.tf
 │   ├── eks_access.tf
@@ -68,7 +72,7 @@ teleport-test/
 
 - AWS CLI v2, OpenTofu, kubectl, helm 설치
 - AWS 프로파일 준비(기본값: `private`)
-- EKS API 접근 CIDR은 기본적으로 **현재 공인 IP를 자동 감지**해 `/32`로 설정됨
+- EKS API는 프라이빗 엔드포인트로 구성됨
 - SSO 연동 없음(로컬 인증 기반)
 
 ## 실행 순서
@@ -88,7 +92,26 @@ tofu apply
 tofu output
 ```
 
-### 2) kubeconfig 설정
+### 2) 프라이빗 베스천(SSM) 준비 (옵션)
+
+프라이빗 베스천에서 작업하려면 `bastion_enabled`를 켭니다.
+
+```bash
+cd terraform
+
+tofu apply -var 'bastion_enabled=true'
+tofu output bastion_ssm_start_session
+```
+
+출력된 `aws ssm start-session`으로 접속한 뒤, 베스천에 `awscli/kubectl/helm/tofu`를 설치해 작업합니다.
+
+SSM 접속 예시:
+```bash
+# 로컬에 AWS CLI v2와 Session Manager Plugin 설치 필요
+aws ssm start-session --target <bastion-instance-id> --region ap-northeast-2 --profile private
+```
+
+### 3) kubeconfig 설정
 
 ```bash
 aws eks update-kubeconfig --name <cluster_name>
@@ -96,7 +119,7 @@ aws eks update-kubeconfig --name <cluster_name>
 
 `tofu output kubeconfig_command`를 그대로 사용해도 됩니다.
 
-### 3) Teleport Cluster 설치
+### 4) Teleport Cluster 설치
 
 ```bash
 helm repo add teleport https://charts.releases.teleport.dev
@@ -109,7 +132,7 @@ helm install teleport-cluster teleport/teleport-cluster \
 - `clusterName`: Teleport 접속용 FQDN
 - `kubeClusterName`: EKS 식별용 이름(임의 지정 가능)
 
-### 4) Kube/DB 실행 방식 (Kubernetes 에이전트)
+### 5) Kube/DB 실행 방식 (Kubernetes 에이전트)
 
 Kubernetes/DB 접근은 `teleport-kube-agent` Helm 차트로 실행합니다.
 
@@ -128,7 +151,7 @@ helm install teleport-agent teleport/teleport-kube-agent \
   -f ./manifest/teleport-kube-agent-values.yaml
 ```
 
-### 5) Node 실행 방식 (EC2 에이전트)
+### 6) Node 실행 방식 (EC2 에이전트)
 
 EC2 접근은 인스턴스에 Teleport 노드 서비스를 설치해 조인합니다.
 
@@ -157,7 +180,7 @@ sudo ./teleport/install
 sudo teleport start --roles=node --token=<token> --proxy=teleport.example.com:443 --nodename=teleport-ec2
 ```
 
-### 6) 리소스별 접근 테스트
+### 7) 리소스별 접근 테스트
 
 ```bash
 # Teleport 로그인
@@ -179,7 +202,9 @@ tsh ssh ec2-user@teleport-ec2
 
 ## 참고
 
-- `admin_cidrs`를 수동으로 지정하려면 `-var 'admin_cidrs=["x.x.x.x/32"]'` 형태로 실행합니다.
+- EKS API가 프라이빗이면 `kubectl`/`tofu` 실행은 VPC 내부(베스천/SSM/VPN)에서만 가능합니다.
+- `admin_cidrs`를 쓰려면 `endpoint_public_access = true`일 때만 의미가 있습니다.
+- EKS Access Entry는 IAM Role/User ARN 형식을 요구합니다. 기본값은 현재 호출자 ARN을 자동 정규화합니다.
 - RDS는 프라이빗 서브넷에 생성되므로 외부 직접 접속은 불가합니다. Teleport 경유 접근을 전제로 합니다.
 - DNS를 사용하지 않는 테스트라면 `tsh login --insecure` 옵션을 고려하세요.
 
