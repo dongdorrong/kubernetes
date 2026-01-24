@@ -4,7 +4,7 @@ data "aws_ami" "al2023" {
 
   filter {
     name   = "name"
-    values = ["al2023-ami-*-x86_64"]
+    values = ["al2023-ami-2023.*-x86_64"]
   }
 }
 
@@ -51,6 +51,7 @@ resource "aws_instance" "teleport_node" {
   iam_instance_profile   = aws_iam_instance_profile.ec2_ssm[0].name
   key_name               = local.ec2_key_name
   user_data              = local.ssm_user_data
+  user_data_replace_on_change = true
 
   tags = {
     Name = "${local.project_name}-teleport-node"

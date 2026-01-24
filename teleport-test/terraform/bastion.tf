@@ -81,6 +81,7 @@ resource "aws_instance" "bastion" {
 
   associate_public_ip_address = false
   user_data                   = local.ssm_user_data
+  user_data_replace_on_change = true
 
   tags = {
     Name = "${local.project_name}-bastion"

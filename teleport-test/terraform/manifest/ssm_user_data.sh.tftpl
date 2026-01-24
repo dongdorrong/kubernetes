@@ -1,11 +1,24 @@
 #!/bin/bash
 set -euo pipefail
 
-if command -v dnf >/dev/null 2>&1; then
-  dnf install -y amazon-ssm-agent git k9s awscli || true
-elif command -v yum >/dev/null 2>&1; then
-  yum install -y amazon-ssm-agent git k9s awscli || true
+TARGET_USER="root"
+TARGET_HOME="/root"
+KUBECONFIG_SHARED="/etc/teleport/kubeconfig"
+if id -u ssm-user >/dev/null 2>&1; then
+  TARGET_USER="ssm-user"
+  TARGET_HOME="/home/ssm-user"
+elif id -u ec2-user >/dev/null 2>&1; then
+  TARGET_USER="ec2-user"
+  TARGET_HOME="/home/ec2-user"
 fi
+
+if command -v dnf >/dev/null 2>&1; then
+  dnf install -y amazon-ssm-agent git awscli curl-minimal tar gzip || true
+elif command -v yum >/dev/null 2>&1; then
+  yum install -y amazon-ssm-agent git awscli curl tar gzip || true
+fi
+
+systemctl enable --now amazon-ssm-agent || true
 
 if command -v apt >/dev/null 2>&1; then
   apt update -y || true
@@ -16,7 +29,8 @@ if command -v apt >/dev/null 2>&1; then
 fi
 
 if ! command -v k9s >/dev/null 2>&1; then
-  WORKDIR="/home/ec2-user"
+  set +e
+  WORKDIR="$${TARGET_HOME}"
   if [ ! -d "$${WORKDIR}" ]; then
     WORKDIR="/root"
   fi
@@ -26,32 +40,36 @@ if ! command -v k9s >/dev/null 2>&1; then
   tar -xzf "$${WORKDIR}/k9s.tar.gz" -C "$${WORKDIR}"
   install -o root -g root -m 0755 "$${WORKDIR}/k9s" /usr/local/bin/k9s
   rm -f "$${WORKDIR}/k9s.tar.gz" "$${WORKDIR}/k9s"
+  set -e
 fi
 
-systemctl enable --now amazon-ssm-agent || true
-
 if ! command -v helm >/dev/null 2>&1; then
-  WORKDIR="/home/ec2-user"
+  set +e
+  WORKDIR="$${TARGET_HOME}"
   if [ ! -d "$${WORKDIR}" ]; then
     WORKDIR="/root"
   fi
   curl -fsSL -o "$${WORKDIR}/get_helm.sh" https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4
   chmod 700 "$${WORKDIR}/get_helm.sh"
   "$${WORKDIR}/get_helm.sh"
+  set -e
 fi
 
 if ! command -v kubectl >/dev/null 2>&1; then
-  WORKDIR="/home/ec2-user"
+  set +e
+  WORKDIR="$${TARGET_HOME}"
   if [ ! -d "$${WORKDIR}" ]; then
     WORKDIR="/root"
   fi
   KUBECTL_VERSION="$(curl -L -s https://dl.k8s.io/release/stable.txt)"
   curl -L -o "$${WORKDIR}/kubectl" "https://dl.k8s.io/release/$${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
   install -o root -g root -m 0755 "$${WORKDIR}/kubectl" /usr/local/bin/kubectl
+  set -e
 fi
 
 if ! command -v tsh >/dev/null 2>&1; then
-  WORKDIR="/home/ec2-user"
+  set +e
+  WORKDIR="$${TARGET_HOME}"
   if [ ! -d "$${WORKDIR}" ]; then
     WORKDIR="/root"
   fi
@@ -61,28 +79,254 @@ if ! command -v tsh >/dev/null 2>&1; then
   "$${WORKDIR}/teleport/install"
   rm -f "$${WORKDIR}/teleport.tar.gz"
   rm -rf "$${WORKDIR}/teleport"
+  set -e
 fi
 
-WORKDIR="/home/ec2-user"
+WORKDIR="$${TARGET_HOME}"
 if [ ! -d "$${WORKDIR}" ]; then
   WORKDIR="/root"
 fi
 if [ ! -d "$${WORKDIR}/kubernetes" ]; then
   git clone https://github.com/dongdorrong/kubernetes.git "$${WORKDIR}/kubernetes" || true
 fi
+chown -R "$${TARGET_USER}:$${TARGET_USER}" "$${WORKDIR}/kubernetes" || true
 
 if command -v aws >/dev/null 2>&1; then
-  if id -u ec2-user >/dev/null 2>&1; then
-    TARGET_USER="ec2-user"
-    TARGET_HOME="/home/ec2-user"
-  else
-    TARGET_USER="root"
-    TARGET_HOME="/root"
+  mkdir -p /etc/teleport "$${TARGET_HOME}/.kube" /root/.kube /home/ssm-user/.kube /home/ec2-user/.kube
+  aws eks update-kubeconfig --name ${cluster_name} --region ${region} --kubeconfig "$${KUBECONFIG_SHARED}" || true
+  if [ -f "$${KUBECONFIG_SHARED}" ]; then
+    for HOME_CANDIDATE in "$${TARGET_HOME}" /root /home/ssm-user /home/ec2-user; do
+      if [ -d "$${HOME_CANDIDATE}" ]; then
+        cp -f "$${KUBECONFIG_SHARED}" "$${HOME_CANDIDATE}/.kube/config" || true
+      fi
+    done
+    chmod 0644 "$${KUBECONFIG_SHARED}" || true
   fi
-  mkdir -p "$${TARGET_HOME}/.kube"
-  aws eks update-kubeconfig --name ${cluster_name} --region ${region} --kubeconfig "$${TARGET_HOME}/.kube/config" || true
   chown -R "$${TARGET_USER}:$${TARGET_USER}" "$${TARGET_HOME}/.kube" || true
-  KUBECONFIG_PATH="$${TARGET_HOME}/.kube/config"
+  if id -u ssm-user >/dev/null 2>&1; then
+    chown -R ssm-user:ssm-user /home/ssm-user/.kube || true
+  fi
+  if id -u ec2-user >/dev/null 2>&1; then
+    chown -R ec2-user:ec2-user /home/ec2-user/.kube || true
+  fi
+  KUBECONFIG_PATH="$${KUBECONFIG_SHARED}"
+fi
+
+cat >/usr/local/bin/fix-ssm-kubeconfig.sh <<'SCRIPT'
+#!/bin/bash
+set -euo pipefail
+
+TARGET_USER="ssm-user"
+TARGET_HOME="/home/ssm-user"
+KUBECONFIG_SHARED="/etc/teleport/kubeconfig"
+
+for i in $(seq 1 60); do
+  if id -u "$${TARGET_USER}" >/dev/null 2>&1; then
+    mkdir -p "$${TARGET_HOME}/.kube"
+    if [ -f "$${KUBECONFIG_SHARED}" ]; then
+      cp -f "$${KUBECONFIG_SHARED}" "$${TARGET_HOME}/.kube/config"
+    fi
+    chown -R "$${TARGET_USER}:$${TARGET_USER}" "$${TARGET_HOME}/.kube"
+    chmod 700 "$${TARGET_HOME}/.kube"
+    if [ -f "$${TARGET_HOME}/.kube/config" ]; then
+      chmod 600 "$${TARGET_HOME}/.kube/config"
+    fi
+    exit 0
+  fi
+  sleep 5
+done
+exit 0
+SCRIPT
+chmod 755 /usr/local/bin/fix-ssm-kubeconfig.sh
+
+cat >/etc/systemd/system/fix-ssm-kubeconfig.service <<'SERVICE'
+[Unit]
+Description=Fix kubeconfig permissions for ssm-user
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/fix-ssm-kubeconfig.sh
+SERVICE
+
+cat >/etc/systemd/system/fix-ssm-kubeconfig.timer <<'TIMER'
+[Unit]
+Description=Retry fixing kubeconfig for ssm-user
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=1m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+TIMER
+
+systemctl daemon-reload
+systemctl enable --now fix-ssm-kubeconfig.timer || true
+systemctl start fix-ssm-kubeconfig.service || true
+
+cat >/usr/local/bin/fix-teleport-proxyaddr.sh <<'SCRIPT'
+#!/bin/bash
+set -euo pipefail
+
+KUBECONFIG="/etc/teleport/kubeconfig"
+RDS_ENDPOINT="${rds_endpoint}"
+if [ ! -f "$${KUBECONFIG}" ]; then
+  exit 0
+fi
+if ! command -v kubectl >/dev/null 2>&1; then
+  exit 0
+fi
+if ! command -v helm >/dev/null 2>&1; then
+  exit 0
+fi
+
+REPO_ROOT=""
+for HOME_CANDIDATE in /home/ssm-user /home/ec2-user /root; do
+  if [ -d "$${HOME_CANDIDATE}/kubernetes/teleport-test/terraform" ]; then
+    REPO_ROOT="$${HOME_CANDIDATE}/kubernetes/teleport-test/terraform"
+    break
+  fi
+done
+if [ -z "$${REPO_ROOT}" ]; then
+  exit 0
+fi
+
+CLUSTER_VALUES="$${REPO_ROOT}/manifest/teleport-cluster-values.yaml"
+AGENT_VALUES="$${REPO_ROOT}/manifest/teleport-kube-agent-values.yaml"
+
+NEED_UPDATE=0
+NEED_PROXY_UPDATE=0
+NEED_TOKEN=0
+NEED_RDS=0
+if [ -f "$${CLUSTER_VALUES}" ] && grep -q "teleport.example.com" "$${CLUSTER_VALUES}"; then
+  NEED_UPDATE=1
+  NEED_PROXY_UPDATE=1
+fi
+if [ -f "$${AGENT_VALUES}" ]; then
+  if grep -q "teleport.example.com" "$${AGENT_VALUES}"; then
+    NEED_UPDATE=1
+    NEED_PROXY_UPDATE=1
+  fi
+  if grep -q "REPLACE_WITH_JOIN_TOKEN" "$${AGENT_VALUES}"; then
+    NEED_UPDATE=1
+    NEED_TOKEN=1
+  fi
+  if grep -q "REPLACE_WITH_RDS_ENDPOINT" "$${AGENT_VALUES}"; then
+    NEED_UPDATE=1
+    NEED_RDS=1
+  fi
+fi
+if [ "$${NEED_UPDATE}" -eq 0 ]; then
+  exit 0
+fi
+
+PROXY_HOST=""
+PROXY_PORT=""
+if [ "$${NEED_PROXY_UPDATE}" -eq 1 ]; then
+  PROXY_HOST=$(KUBECONFIG="$${KUBECONFIG}" kubectl -n default get svc teleport-cluster -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+  if [ -z "$${PROXY_HOST}" ]; then
+    PROXY_HOST=$(KUBECONFIG="$${KUBECONFIG}" kubectl -n default get svc teleport-cluster -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+  fi
+  if [ -z "$${PROXY_HOST}" ]; then
+    exit 0
+  fi
+
+  PROXY_PORT=$(KUBECONFIG="$${KUBECONFIG}" kubectl -n default get svc teleport-cluster -o jsonpath='{range .spec.ports[?(@.name=="web")]}{.port}{"\n"}{end}')
+  if [ -z "$${PROXY_PORT}" ]; then
+    PROXY_PORT=$(KUBECONFIG="$${KUBECONFIG}" kubectl -n default get svc teleport-cluster -o jsonpath='{range .spec.ports[?(@.name=="https")]}{.port}{"\n"}{end}')
+  fi
+  if [ -z "$${PROXY_PORT}" ]; then
+    PROXY_PORT=$(KUBECONFIG="$${KUBECONFIG}" kubectl -n default get svc teleport-cluster -o jsonpath='{range .spec.ports[?(@.name=="tls")]}{.port}{"\n"}{end}')
+  fi
+  if [ -z "$${PROXY_PORT}" ]; then
+    PROXY_PORT=443
+  fi
+fi
+
+if [ -f "$${CLUSTER_VALUES}" ] && [ "$${NEED_PROXY_UPDATE}" -eq 1 ]; then
+  sed -i "s#^clusterName:.*#clusterName: \"$${PROXY_HOST}\"#" "$${CLUSTER_VALUES}"
+  KUBECONFIG="$${KUBECONFIG}" helm upgrade --install teleport-cluster teleport/teleport-cluster -f "$${CLUSTER_VALUES}" >/dev/null 2>&1 || true
+fi
+if [ -f "$${AGENT_VALUES}" ]; then
+  if [ "$${NEED_PROXY_UPDATE}" -eq 1 ] && [ -n "$${PROXY_HOST}" ]; then
+    sed -i "s#^proxyAddr:.*#proxyAddr: \"$${PROXY_HOST}:$${PROXY_PORT}\"#" "$${AGENT_VALUES}"
+  fi
+  if [ "$${NEED_RDS}" -eq 1 ] && [ -n "$${RDS_ENDPOINT}" ]; then
+    sed -i "s/REPLACE_WITH_RDS_ENDPOINT/$${RDS_ENDPOINT}/" "$${AGENT_VALUES}"
+  fi
+  if [ "$${NEED_TOKEN}" -eq 1 ]; then
+    if KUBECONFIG="$${KUBECONFIG}" kubectl -n default rollout status deploy/teleport-cluster-auth --timeout=10s >/dev/null 2>&1; then
+      TOKEN_LINE=$(KUBECONFIG="$${KUBECONFIG}" kubectl -n default exec deploy/teleport-cluster-auth -- tctl tokens add --type=kube,db --ttl=1h 2>/dev/null | awk '/The invite token:/ {print $4}')
+      if [ -n "$${TOKEN_LINE}" ]; then
+        sed -i "s/REPLACE_WITH_JOIN_TOKEN/$${TOKEN_LINE}/" "$${AGENT_VALUES}"
+      fi
+    fi
+  fi
+  if ! grep -q "REPLACE_WITH" "$${AGENT_VALUES}"; then
+    KUBECONFIG="$${KUBECONFIG}" helm upgrade --install teleport-agent teleport/teleport-kube-agent -f "$${AGENT_VALUES}" >/dev/null 2>&1 || true
+  fi
+fi
+SCRIPT
+chmod 755 /usr/local/bin/fix-teleport-proxyaddr.sh
+
+cat >/etc/systemd/system/fix-teleport-proxyaddr.service <<'SERVICE'
+[Unit]
+Description=Fix Teleport proxyAddr and clusterName from LB
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/fix-teleport-proxyaddr.sh
+SERVICE
+
+cat >/etc/systemd/system/fix-teleport-proxyaddr.timer <<'TIMER'
+[Unit]
+Description=Retry fixing Teleport proxyAddr and clusterName from LB
+
+[Timer]
+OnBootSec=1m
+OnUnitActiveSec=2m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+TIMER
+
+systemctl daemon-reload
+systemctl enable --now fix-teleport-proxyaddr.timer || true
+systemctl start fix-teleport-proxyaddr.service || true
+
+if command -v kubectl >/dev/null 2>&1 && [ -f "$${KUBECONFIG_PATH:-}" ]; then
+  set +e
+  for i in $(seq 1 30); do
+    KUBECONFIG="$${KUBECONFIG_PATH}" kubectl get sc >/dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      DEFAULT_SC=$(KUBECONFIG="$${KUBECONFIG_PATH}" kubectl get sc -o jsonpath='{range .items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")]}{.metadata.name}{"\n"}{end}')
+      if [ -z "$${DEFAULT_SC}" ]; then
+        cat <<'EOF' | KUBECONFIG="$${KUBECONFIG_PATH}" kubectl apply -f - >/dev/null 2>&1
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp3
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: ebs.csi.aws.com
+parameters:
+  type: gp3
+  fsType: ext4
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+EOF
+      fi
+      break
+    fi
+    sleep 10
+  done
+  set -e
 fi
 
 if command -v helm >/dev/null 2>&1; then
@@ -91,12 +335,52 @@ if command -v helm >/dev/null 2>&1; then
   AGENT_VALUES="$${REPO_ROOT}/manifest/teleport-kube-agent-values.yaml"
   KUBECONFIG_PATH="$${KUBECONFIG_PATH:-/root/.kube/config}"
   RDS_ENDPOINT="${rds_endpoint}"
+  export KUBECONFIG="$${KUBECONFIG_PATH}"
 
   helm repo add teleport https://charts.releases.teleport.dev >/dev/null 2>&1 || true
   helm repo update >/dev/null 2>&1 || true
+  if [ "$${TARGET_USER}" != "root" ]; then
+    su - "$${TARGET_USER}" -c "helm repo add teleport https://charts.releases.teleport.dev >/dev/null 2>&1 || true"
+    su - "$${TARGET_USER}" -c "helm repo update >/dev/null 2>&1 || true"
+  fi
 
   if [ -f "$${CLUSTER_VALUES}" ]; then
     helm upgrade --install teleport-cluster teleport/teleport-cluster -f "$${CLUSTER_VALUES}" || true
+  fi
+
+  PROXY_HOST=""
+  PROXY_PORT=""
+  set +e
+  for i in $(seq 1 60); do
+    PROXY_HOST=$(KUBECONFIG="$${KUBECONFIG_PATH}" kubectl -n default get svc teleport-cluster -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+    if [ -z "$${PROXY_HOST}" ]; then
+      PROXY_HOST=$(KUBECONFIG="$${KUBECONFIG_PATH}" kubectl -n default get svc teleport-cluster -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+    fi
+    if [ -n "$${PROXY_HOST}" ]; then
+      PROXY_PORT=$(KUBECONFIG="$${KUBECONFIG_PATH}" kubectl -n default get svc teleport-cluster -o jsonpath='{range .spec.ports[?(@.name=="web")]}{.port}{"\n"}{end}')
+      if [ -z "$${PROXY_PORT}" ]; then
+        PROXY_PORT=$(KUBECONFIG="$${KUBECONFIG_PATH}" kubectl -n default get svc teleport-cluster -o jsonpath='{range .spec.ports[?(@.name=="https")]}{.port}{"\n"}{end}')
+      fi
+      if [ -z "$${PROXY_PORT}" ]; then
+        PROXY_PORT=$(KUBECONFIG="$${KUBECONFIG_PATH}" kubectl -n default get svc teleport-cluster -o jsonpath='{range .spec.ports[?(@.name=="tls")]}{.port}{"\n"}{end}')
+      fi
+      if [ -z "$${PROXY_PORT}" ]; then
+        PROXY_PORT=$(KUBECONFIG="$${KUBECONFIG_PATH}" kubectl -n default get svc teleport-cluster -o jsonpath='{.spec.ports[0].port}')
+      fi
+      break
+    fi
+    sleep 10
+  done
+  set -e
+
+  if [ -n "$${PROXY_HOST}" ]; then
+    if [ -f "$${CLUSTER_VALUES}" ] && grep -q "teleport.example.com" "$${CLUSTER_VALUES}"; then
+      sed -i "s#^clusterName:.*#clusterName: \"$${PROXY_HOST}\"#" "$${CLUSTER_VALUES}"
+      helm upgrade --install teleport-cluster teleport/teleport-cluster -f "$${CLUSTER_VALUES}" || true
+    fi
+    if [ -f "$${AGENT_VALUES}" ] && [ -n "$${PROXY_PORT}" ] && grep -q "teleport.example.com" "$${AGENT_VALUES}"; then
+      sed -i "s#^proxyAddr:.*#proxyAddr: \"$${PROXY_HOST}:$${PROXY_PORT}\"#" "$${AGENT_VALUES}"
+    fi
   fi
 
   set +e
@@ -133,3 +417,8 @@ if [ -n "$PS1" ] && [ -n "$HOME" ]; then
 fi
 PROFILE
 chmod 644 /etc/profile.d/01-cd-home.sh
+
+cat >/etc/profile.d/02-kubeconfig.sh <<'PROFILE'
+export KUBECONFIG=/etc/teleport/kubeconfig
+PROFILE
+chmod 644 /etc/profile.d/02-kubeconfig.sh
