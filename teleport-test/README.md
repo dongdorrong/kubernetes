@@ -67,21 +67,39 @@ teleport-test/
 │   ├── outputs.tf
 │   ├── manifest/
 │   │   ├── teleport-cluster-values.yaml
-│   │   └── teleport-kube-agent-values.yaml
+│   │   ├── teleport-kube-agent-values.yaml
+│   │   └── ssm_user_data.sh.tftpl
 │   └── tfstate/
 ```
 
 ## 전제 조건
 
-- AWS CLI v2, OpenTofu, kubectl, helm 설치
+로컬(작업 PC/WSL):
+- AWS CLI v2 + Session Manager Plugin
+- OpenTofu
 - AWS 프로파일 준비(기본값: `private`)
-- EKS API는 프라이빗 엔드포인트로 구성됨
-- SSO 연동 없음(로컬 인증 기반)
+- 기본값: EKS `1.33`, 노드 AMI `AL2023_x86_64_STANDARD`
+
+베스천(user_data 자동화):
+- awscli, kubectl, helm, git, k9s, tsh 설치
+- `~/kubernetes`에 레포 자동 클론
+- `~/.kube/config` 자동 생성
+- Teleport 클러스터/에이전트 `helm upgrade --install`
+- `REPLACE_WITH_JOIN_TOKEN`이 있으면 토큰 생성 후 자동 주입
+- user_data 템플릿: `terraform/manifest/ssm_user_data.sh.tftpl`
 
 ## 실행 순서
 
-### 1) 인프라 생성 (VPC/EKS/RDS)
+1) (로컬) values 준비
+- `terraform/manifest/teleport-cluster-values.yaml`: `clusterName`, `kubeClusterName`
+  - `clusterName`: Teleport 웹/프록시 접속에 쓰이는 **클러스터의 외부 주소(FQDN)**. 예: `teleport.example.com`
+  - `kubeClusterName`: Teleport UI/`tsh`에서 표시되는 **Kubernetes 클러스터 식별 이름**. 예: `eks-teleport-test`
+- `terraform/manifest/teleport-kube-agent-values.yaml`: `proxyAddr`, `databases[].uri`
+  - `proxyAddr`: Teleport Proxy 주소 **호스트:포트** 형식. 예: `teleport.example.com:443`
+- `joinParams.tokenName`은 `REPLACE_WITH_JOIN_TOKEN` 상태로 둡니다.
+- `databases[].uri`는 `REPLACE_WITH_RDS_ENDPOINT`로 둬도 됩니다. user_data가 RDS 엔드포인트를 자동 주입합니다.
 
+2) (로컬) 인프라 프로비저닝
 ```bash
 cd terraform
 
@@ -89,127 +107,58 @@ tofu init
 tofu apply
 ```
 
-출력값 확인:
-
-```bash
-tofu output
-```
-
-### 2) 프라이빗 베스천(SSM) 준비 (옵션)
-
-프라이빗 베스천에서 작업하려면 `bastion_enabled`를 켭니다.
-
+3) (로컬) 베스천 접속
 ```bash
 cd terraform
 
-tofu apply -var 'bastion_enabled=true'
-tofu output bastion_ssm_start_session
+tofu output -raw bastion_ssm_start_session
 ```
 
-출력된 `aws ssm start-session`으로 접속한 뒤, 베스천에 `awscli/kubectl/helm/tofu`를 설치해 작업합니다. 프라이빗 베스천은 SSM VPC 엔드포인트가 필요하며 기본으로 생성됩니다(`ssm_endpoints_enabled=true`).
+user_data 동작을 바꾸려면 `terraform/manifest/ssm_user_data.sh.tftpl`을 수정하고 베스천을 재생성합니다.
 
-SSM 접속 예시:
+## 기능 확인 (베스천)
+
+Teleport 사용 관점에서 동작 여부를 확인합니다.
+
+1) Proxy 주소 확인
 ```bash
-# 로컬에 AWS CLI v2와 Session Manager Plugin 설치 필요
-aws ssm start-session --target <bastion-instance-id> --region ap-northeast-2 --profile private
+PROXY="$(kubectl -n default get svc teleport-cluster -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
+echo "${PROXY}"
 ```
 
-### 3) kubeconfig 설정
-
+2) Teleport 로그인 (로컬 인증 기준)
 ```bash
-aws eks update-kubeconfig --name <cluster_name>
+tsh login --proxy=${PROXY}:443 --user=<user> --insecure
 ```
 
-`tofu output kubeconfig_command`를 그대로 사용해도 됩니다.
-베스천을 쓰는 경우 user_data가 `/home/ec2-user/.kube/config`에 자동 생성합니다.
-
-### 4) Teleport Cluster 설치
-
+로컬 사용자 생성이 필요하면 아래를 먼저 실행합니다.
 ```bash
-helm repo add teleport https://charts.releases.teleport.dev
-helm repo update
-
-helm install teleport-cluster teleport/teleport-cluster \
-  -f ~/kubernetes/teleport-test/terraform/manifest/teleport-cluster-values.yaml
+kubectl -n default exec -it deploy/teleport-cluster-auth -- tctl users add <user> --roles=access,editor
 ```
+출력된 초대 링크로 접속해 비밀번호/MFA를 설정한 뒤 로그인합니다.
 
-- `clusterName`: Teleport 접속용 FQDN
-- `kubeClusterName`: EKS 식별용 이름(임의 지정 가능)
-
-### 5) Kube/DB 실행 방식 (Kubernetes 에이전트)
-
-Kubernetes/DB 접근은 `teleport-kube-agent` Helm 차트로 실행합니다.
-
-1) 조인 토큰 생성 (kube, db)
+3) Kube/DB 리소스 조회
 ```bash
-kubectl -n default exec -it deploy/teleport-cluster-auth -- tctl tokens add --type=kube,db
-```
-
-2) 값 수정
-- `proxyAddr`: Teleport Proxy 주소 (예: `teleport.example.com:443`)
-- `databases[].uri`: `tofu output rds_endpoint` 결과 + 포트
-
-3) 에이전트 설치
-```bash
-helm install teleport-agent teleport/teleport-kube-agent \
-  -f ~/kubernetes/teleport-test/terraform/manifest/teleport-kube-agent-values.yaml
-```
-
-### 6) Node 실행 방식 (EC2 에이전트)
-
-EC2 접근은 인스턴스에 Teleport 노드 서비스를 설치해 조인합니다.
-
-1) EC2 인스턴스 생성
-```bash
-cd terraform
-
-tofu apply -var 'ec2_enabled=true'
-tofu output ec2_instance_id
-tofu output ec2_ssm_start_session
-```
-
-2) 조인 토큰 생성 (node)
-```bash
-kubectl -n default exec -it deploy/teleport-cluster-auth -- tctl tokens add --type=node --ttl=1h
-```
-
-3) 노드 설치/조인 (예시, Amazon Linux 2023)
-```bash
-aws ssm start-session --target <instance-id> --region ap-northeast-2 --profile private
-
-curl -O https://cdn.teleport.dev/teleport-v18.6.4-linux-amd64-bin.tar.gz
-tar -xzf teleport-v18.6.4-linux-amd64-bin.tar.gz
-sudo ./teleport/install
-
-sudo teleport start --roles=node --token=<token> --proxy=teleport.example.com:443 --nodename=teleport-ec2
-```
-
-### 7) 리소스별 접근 테스트
-
-```bash
-# Teleport 로그인
-tsh login --proxy=teleport.example.com --user=<user>
-
-# Kubernetes 접근 확인
 tsh kube ls
+tsh db ls
+```
+
+4) Kubernetes 접속 확인
+```bash
 tsh kube login <kubeClusterName>
 kubectl get nodes
+```
 
-# Database 접근 확인
-tsh db ls
+5) DB 접속 확인
+```bash
 tsh db connect teleport-rds
-
-# EC2 접근 확인 (node 사용 시)
-tsh ls
-tsh ssh ec2-user@teleport-ec2
 ```
 
 ## 참고
 
-- EKS API가 프라이빗이면 `kubectl`/`tofu` 실행은 VPC 내부(베스천/SSM/VPN)에서만 가능합니다.
-- `admin_cidrs`를 쓰려면 `endpoint_public_access = true`일 때만 의미가 있습니다.
+- EKS API가 프라이빗이면 `kubectl`/`tsh`는 VPC 내부(베스천/SSM/VPN)에서만 가능합니다.
 - EKS Access Entry는 IAM Role/User ARN 형식을 요구합니다. 기본값은 현재 호출자 ARN을 자동 정규화합니다.
-- RDS는 프라이빗 서브넷에 생성되므로 외부 직접 접속은 불가합니다. Teleport 경유 접근을 전제로 합니다.
+- RDS는 프라이빗 서브넷에 생성되므로 외부 직접 접속은 불가합니다.
 - DNS를 사용하지 않는 테스트라면 `tsh login --insecure` 옵션을 고려하세요.
 
 ## 정리

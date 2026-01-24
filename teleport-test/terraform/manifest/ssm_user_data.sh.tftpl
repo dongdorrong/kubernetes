@@ -1,0 +1,135 @@
+#!/bin/bash
+set -euo pipefail
+
+if command -v dnf >/dev/null 2>&1; then
+  dnf install -y amazon-ssm-agent git k9s awscli || true
+elif command -v yum >/dev/null 2>&1; then
+  yum install -y amazon-ssm-agent git k9s awscli || true
+fi
+
+if command -v apt >/dev/null 2>&1; then
+  apt update -y || true
+  apt install -y wget || true
+  wget https://github.com/derailed/k9s/releases/latest/download/k9s_linux_amd64.deb || true
+  apt install -y ./k9s_linux_amd64.deb || true
+  rm -f ./k9s_linux_amd64.deb || true
+fi
+
+if ! command -v k9s >/dev/null 2>&1; then
+  WORKDIR="/home/ec2-user"
+  if [ ! -d "$${WORKDIR}" ]; then
+    WORKDIR="/root"
+  fi
+  K9S_URL_BASE="https://github.com/derailed/k9s/releases/latest/download/"
+  K9S_URL_FILE="k9s_Linux_amd64.tar.gz"
+  curl -L -o "$${WORKDIR}/k9s.tar.gz" "$${K9S_URL_BASE}$${K9S_URL_FILE}"
+  tar -xzf "$${WORKDIR}/k9s.tar.gz" -C "$${WORKDIR}"
+  install -o root -g root -m 0755 "$${WORKDIR}/k9s" /usr/local/bin/k9s
+  rm -f "$${WORKDIR}/k9s.tar.gz" "$${WORKDIR}/k9s"
+fi
+
+systemctl enable --now amazon-ssm-agent || true
+
+if ! command -v helm >/dev/null 2>&1; then
+  WORKDIR="/home/ec2-user"
+  if [ ! -d "$${WORKDIR}" ]; then
+    WORKDIR="/root"
+  fi
+  curl -fsSL -o "$${WORKDIR}/get_helm.sh" https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4
+  chmod 700 "$${WORKDIR}/get_helm.sh"
+  "$${WORKDIR}/get_helm.sh"
+fi
+
+if ! command -v kubectl >/dev/null 2>&1; then
+  WORKDIR="/home/ec2-user"
+  if [ ! -d "$${WORKDIR}" ]; then
+    WORKDIR="/root"
+  fi
+  KUBECTL_VERSION="$(curl -L -s https://dl.k8s.io/release/stable.txt)"
+  curl -L -o "$${WORKDIR}/kubectl" "https://dl.k8s.io/release/$${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+  install -o root -g root -m 0755 "$${WORKDIR}/kubectl" /usr/local/bin/kubectl
+fi
+
+if ! command -v tsh >/dev/null 2>&1; then
+  WORKDIR="/home/ec2-user"
+  if [ ! -d "$${WORKDIR}" ]; then
+    WORKDIR="/root"
+  fi
+  TELEPORT_VERSION="18.6.4"
+  curl -L -o "$${WORKDIR}/teleport.tar.gz" "https://cdn.teleport.dev/teleport-v$${TELEPORT_VERSION}-linux-amd64-bin.tar.gz"
+  tar -xzf "$${WORKDIR}/teleport.tar.gz" -C "$${WORKDIR}"
+  "$${WORKDIR}/teleport/install"
+  rm -f "$${WORKDIR}/teleport.tar.gz"
+  rm -rf "$${WORKDIR}/teleport"
+fi
+
+WORKDIR="/home/ec2-user"
+if [ ! -d "$${WORKDIR}" ]; then
+  WORKDIR="/root"
+fi
+if [ ! -d "$${WORKDIR}/kubernetes" ]; then
+  git clone https://github.com/dongdorrong/kubernetes.git "$${WORKDIR}/kubernetes" || true
+fi
+
+if command -v aws >/dev/null 2>&1; then
+  if id -u ec2-user >/dev/null 2>&1; then
+    TARGET_USER="ec2-user"
+    TARGET_HOME="/home/ec2-user"
+  else
+    TARGET_USER="root"
+    TARGET_HOME="/root"
+  fi
+  mkdir -p "$${TARGET_HOME}/.kube"
+  aws eks update-kubeconfig --name ${cluster_name} --region ${region} --kubeconfig "$${TARGET_HOME}/.kube/config" || true
+  chown -R "$${TARGET_USER}:$${TARGET_USER}" "$${TARGET_HOME}/.kube" || true
+  KUBECONFIG_PATH="$${TARGET_HOME}/.kube/config"
+fi
+
+if command -v helm >/dev/null 2>&1; then
+  REPO_ROOT="$${WORKDIR}/kubernetes/teleport-test/terraform"
+  CLUSTER_VALUES="$${REPO_ROOT}/manifest/teleport-cluster-values.yaml"
+  AGENT_VALUES="$${REPO_ROOT}/manifest/teleport-kube-agent-values.yaml"
+  KUBECONFIG_PATH="$${KUBECONFIG_PATH:-/root/.kube/config}"
+  RDS_ENDPOINT="${rds_endpoint}"
+
+  helm repo add teleport https://charts.releases.teleport.dev >/dev/null 2>&1 || true
+  helm repo update >/dev/null 2>&1 || true
+
+  if [ -f "$${CLUSTER_VALUES}" ]; then
+    helm upgrade --install teleport-cluster teleport/teleport-cluster -f "$${CLUSTER_VALUES}" || true
+  fi
+
+  set +e
+  AUTH_READY=0
+  for i in $(seq 1 30); do
+    KUBECONFIG="$${KUBECONFIG_PATH}" kubectl -n default rollout status deploy/teleport-cluster-auth --timeout=10s >/dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      AUTH_READY=1
+      break
+    fi
+    sleep 10
+  done
+  set -e
+
+  if [ -f "$${AGENT_VALUES}" ]; then
+    if grep -q "REPLACE_WITH_RDS_ENDPOINT" "$${AGENT_VALUES}" && [ -n "$${RDS_ENDPOINT}" ]; then
+      sed -i "s/REPLACE_WITH_RDS_ENDPOINT/$${RDS_ENDPOINT}/" "$${AGENT_VALUES}"
+    fi
+    if grep -q "REPLACE_WITH_JOIN_TOKEN" "$${AGENT_VALUES}" && [ "$${AUTH_READY}" -eq 1 ]; then
+      TOKEN_LINE=$(KUBECONFIG="$${KUBECONFIG_PATH}" kubectl -n default exec deploy/teleport-cluster-auth -- tctl tokens add --type=kube,db --ttl=1h 2>/dev/null | awk '/The invite token:/ {print $4}')
+      if [ -n "$${TOKEN_LINE}" ]; then
+        sed -i "s/REPLACE_WITH_JOIN_TOKEN/$${TOKEN_LINE}/" "$${AGENT_VALUES}"
+      fi
+    fi
+    if ! grep -q "REPLACE_WITH" "$${AGENT_VALUES}"; then
+      helm upgrade --install teleport-agent teleport/teleport-kube-agent -f "$${AGENT_VALUES}" || true
+    fi
+  fi
+fi
+
+cat >/etc/profile.d/01-cd-home.sh <<'PROFILE'
+if [ -n "$PS1" ] && [ -n "$HOME" ]; then
+  cd "$HOME"
+fi
+PROFILE
+chmod 644 /etc/profile.d/01-cd-home.sh

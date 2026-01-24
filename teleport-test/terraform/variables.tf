@@ -76,6 +76,12 @@ variable "node_capacity_type" {
   default     = ""
 }
 
+variable "node_ami_type" {
+  description = "EKS node AMI type (e.g., AL2023_x86_64_STANDARD)"
+  type        = string
+  default     = ""
+}
+
 variable "node_desired_size" {
   description = "EKS node desired size"
   type        = number

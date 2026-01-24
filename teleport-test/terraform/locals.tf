@@ -17,9 +17,10 @@ locals {
   private_subnet_ids = aws_subnet.private[*].id
   public_subnet_ids  = aws_subnet.public[*].id
 
-  eks_version         = var.eks_version != "" ? var.eks_version : "1.29"
+  eks_version         = var.eks_version != "" ? var.eks_version : "1.33"
   node_instance_types = length(var.node_instance_types) > 0 ? var.node_instance_types : ["t3.medium"]
   node_capacity_type  = var.node_capacity_type != "" ? var.node_capacity_type : "SPOT"
+  node_ami_type       = var.node_ami_type != "" ? var.node_ami_type : "AL2023_x86_64_STANDARD"
   node_desired_size   = var.node_desired_size > 0 ? var.node_desired_size : 2
   node_min_size       = var.node_min_size > 0 ? var.node_min_size : 2
   node_max_size       = var.node_max_size > 0 ? var.node_max_size : 3
@@ -50,80 +51,11 @@ locals {
     ec2messages = "com.amazonaws.${local.region}.ec2messages"
   } : {}
 
-  ssm_user_data = <<-EOF
-#!/bin/bash
-set -euo pipefail
-
-if command -v dnf >/dev/null 2>&1; then
-  dnf install -y amazon-ssm-agent git k9s awscli || true
-elif command -v yum >/dev/null 2>&1; then
-  yum install -y amazon-ssm-agent git k9s awscli || true
-fi
-
-if command -v apt >/dev/null 2>&1; then
-  apt update -y || true
-  apt install -y wget || true
-  wget https://github.com/derailed/k9s/releases/latest/download/k9s_linux_amd64.deb || true
-  apt install -y ./k9s_linux_amd64.deb || true
-  rm -f ./k9s_linux_amd64.deb || true
-fi
-
-if ! command -v k9s >/dev/null 2>&1; then
-  WORKDIR="/home/ec2-user"
-  if [ ! -d "$${WORKDIR}" ]; then
-    WORKDIR="/root"
-  fi
-  K9S_URL_BASE="https://github.com/derailed/k9s/releases/latest/download/"
-  K9S_URL_FILE="k9s_Linux_amd64.tar.gz"
-  curl -L -o "$${WORKDIR}/k9s.tar.gz" "$${K9S_URL_BASE}$${K9S_URL_FILE}"
-  tar -xzf "$${WORKDIR}/k9s.tar.gz" -C "$${WORKDIR}"
-  install -o root -g root -m 0755 "$${WORKDIR}/k9s" /usr/local/bin/k9s
-  rm -f "$${WORKDIR}/k9s.tar.gz" "$${WORKDIR}/k9s"
-fi
-
-systemctl enable --now amazon-ssm-agent || true
-
-if ! command -v helm >/dev/null 2>&1; then
-  WORKDIR="/home/ec2-user"
-  if [ ! -d "$${WORKDIR}" ]; then
-    WORKDIR="/root"
-  fi
-  curl -fsSL -o "$${WORKDIR}/get_helm.sh" https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4
-  chmod 700 "$${WORKDIR}/get_helm.sh"
-  "$${WORKDIR}/get_helm.sh"
-fi
-
-if ! command -v kubectl >/dev/null 2>&1; then
-  WORKDIR="/home/ec2-user"
-  if [ ! -d "$${WORKDIR}" ]; then
-    WORKDIR="/root"
-  fi
-  KUBECTL_VERSION="$(curl -L -s https://dl.k8s.io/release/stable.txt)"
-  curl -L -o "$${WORKDIR}/kubectl" "https://dl.k8s.io/release/$${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
-  install -o root -g root -m 0755 "$${WORKDIR}/kubectl" /usr/local/bin/kubectl
-fi
-
-WORKDIR="/home/ec2-user"
-if [ ! -d "$${WORKDIR}" ]; then
-  WORKDIR="/root"
-fi
-if [ ! -d "$${WORKDIR}/kubernetes" ]; then
-  git clone https://github.com/dongdorrong/kubernetes.git "$${WORKDIR}/kubernetes" || true
-fi
-
-if command -v aws >/dev/null 2>&1; then
-  if id -u ec2-user >/dev/null 2>&1; then
-    TARGET_USER="ec2-user"
-    TARGET_HOME="/home/ec2-user"
-  else
-    TARGET_USER="root"
-    TARGET_HOME="/root"
-  fi
-  mkdir -p "$${TARGET_HOME}/.kube"
-  aws eks update-kubeconfig --name ${local.cluster_name} --region ${local.region} --kubeconfig "$${TARGET_HOME}/.kube/config" || true
-  chown -R "$${TARGET_USER}:$${TARGET_USER}" "$${TARGET_HOME}/.kube" || true
-fi
-EOF
+  ssm_user_data = templatefile("${path.module}/manifest/ssm_user_data.sh.tftpl", {
+    cluster_name = local.cluster_name
+    region       = local.region
+    rds_endpoint = aws_db_instance.teleport.address
+  })
 
   node_name_format = "${local.cluster_name}-node"
   node_tags = {

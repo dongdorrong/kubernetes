@@ -40,7 +40,7 @@ resource "aws_eks_node_group" "default" {
   subnet_ids    = local.private_subnet_ids
 
   instance_types = local.node_instance_types
-  ami_type       = "AL2_x86_64"
+  ami_type       = local.node_ami_type
   capacity_type  = local.node_capacity_type
 
   scaling_config {

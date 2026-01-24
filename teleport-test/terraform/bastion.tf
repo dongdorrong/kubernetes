@@ -85,4 +85,6 @@ resource "aws_instance" "bastion" {
   tags = {
     Name = "${local.project_name}-bastion"
   }
+
+  depends_on = [aws_eks_cluster.this]
 }
