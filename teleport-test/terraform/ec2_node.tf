@@ -53,6 +53,10 @@ resource "aws_instance" "teleport_node" {
   user_data              = local.ssm_user_data
   user_data_replace_on_change = true
 
+  instance_market_options {
+    market_type = "spot"
+  }
+
   tags = {
     Name = "${local.project_name}-teleport-node"
   }

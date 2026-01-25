@@ -79,14 +79,13 @@ teleport-test/
 - OpenTofu
 - AWS 프로파일 준비(기본값: `private`)
 - 기본값: EKS `1.33`, 노드 AMI `AL2023_x86_64_STANDARD`
+- 베스천/EC2는 Spot 인스턴스로 생성되며 EKS 노드 그룹도 기본 SPOT입니다.
 
-베스천(user_data 자동화):
+베스천(user_data 기본 설치):
 - awscli, kubectl, helm, git, k9s, tsh 설치
-- `~/kubernetes`에 레포 자동 클론
-- `~/.kube/config` 자동 생성
-- Teleport 클러스터/에이전트 `helm upgrade --install`
-- `REPLACE_WITH_JOIN_TOKEN`이 있으면 토큰 생성 후 자동 주입
+- SSM Agent 활성화
 - user_data 템플릿: `terraform/manifest/ssm_user_data.sh.tftpl`
+- kubeconfig/Teleport 배포/StorageClass 설정은 수동 진행
 
 ## 실행 순서
 
@@ -97,7 +96,7 @@ teleport-test/
 - `terraform/manifest/teleport-kube-agent-values.yaml`: `proxyAddr`, `databases[].uri`
   - `proxyAddr`: Teleport Proxy 주소 **호스트:포트** 형식. 예: `teleport.example.com:443`
 - `joinParams.tokenName`은 `REPLACE_WITH_JOIN_TOKEN` 상태로 둡니다.
-- `databases[].uri`는 `REPLACE_WITH_RDS_ENDPOINT`로 둬도 됩니다. user_data가 RDS 엔드포인트를 자동 주입합니다.
+- `databases[].uri`는 `REPLACE_WITH_RDS_ENDPOINT`로 둬도 됩니다. 베스천에서 수동으로 치환합니다.
 
 2) (로컬) 인프라 프로비저닝
 ```bash
@@ -116,9 +115,56 @@ tofu output -raw bastion_ssm_start_session
 
 user_data 동작을 바꾸려면 `terraform/manifest/ssm_user_data.sh.tftpl`을 수정하고 베스천을 재생성합니다.
 
+4) (베스천) 수동 설정
+
+```bash
+# kubeconfig 생성 (프라이빗 EKS는 VPC 내부에서 실행)
+aws eks update-kubeconfig --name teleport-test --region ap-northeast-2 --kubeconfig /etc/teleport/kubeconfig
+export KUBECONFIG=/etc/teleport/kubeconfig
+
+# 기본 StorageClass (없을 때만)
+kubectl get sc
+cat <<'EOF' | kubectl apply -f -
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp3
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: ebs.csi.aws.com
+parameters:
+  type: gp3
+  fsType: ext4
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+EOF
+
+# Teleport 클러스터 배포 (레포가 없다면 먼저 클론/복사)
+if [ ! -d ~/kubernetes/teleport-test/terraform ]; then
+  git clone https://github.com/dongdorrong/kubernetes.git ~/kubernetes
+fi
+cd ~/kubernetes/teleport-test/terraform
+helm repo add teleport https://charts.releases.teleport.dev
+helm repo update
+helm upgrade --install teleport-cluster teleport/teleport-cluster -f manifest/teleport-cluster-values.yaml
+
+# Proxy 주소 확인 후 clusterName/proxyAddr 치환
+PROXY="$(kubectl -n default get svc teleport-cluster -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
+sed -i "s#^clusterName:.*#clusterName: \"${PROXY}\"#" manifest/teleport-cluster-values.yaml
+sed -i "s#^proxyAddr:.*#proxyAddr: \"${PROXY}:443\"#" manifest/teleport-kube-agent-values.yaml
+
+# join token + RDS endpoint 치환
+TOKEN_LINE=$(kubectl -n default exec deploy/teleport-cluster-auth -- tctl tokens add --type=kube,db --ttl=1h 2>/dev/null | awk '/The invite token:/ {print $4}')
+sed -i "s/REPLACE_WITH_JOIN_TOKEN/${TOKEN_LINE}/" manifest/teleport-kube-agent-values.yaml
+sed -i "s/REPLACE_WITH_RDS_ENDPOINT/<RDS_ENDPOINT>/" manifest/teleport-kube-agent-values.yaml
+
+# Teleport 에이전트 배포
+helm upgrade --install teleport-agent teleport/teleport-kube-agent -f manifest/teleport-kube-agent-values.yaml
+```
+
 ## 기능 확인 (베스천)
 
-Teleport 사용 관점에서 동작 여부를 확인합니다.
+Teleport 클러스터/에이전트 배포 완료 후 동작 여부를 확인합니다.
 
 1) Proxy 주소 확인
 ```bash

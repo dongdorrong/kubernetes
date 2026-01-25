@@ -69,19 +69,38 @@ resource "aws_security_group" "bastion" {
   }
 }
 
+resource "aws_launch_template" "bastion" {
+  count = local.bastion_enabled ? 1 : 0
+
+  name_prefix            = "${local.project_name}-bastion-"
+  image_id               = data.aws_ami.al2023.id
+  instance_type          = local.bastion_instance_type
+  key_name               = local.bastion_key_name
+  user_data              = base64encode(local.ssm_user_data)
+  update_default_version = true
+
+  iam_instance_profile {
+    name = aws_iam_instance_profile.bastion_ssm[0].name
+  }
+
+  network_interfaces {
+    associate_public_ip_address = false
+    security_groups             = [aws_security_group.bastion[0].id]
+    subnet_id                   = local.private_subnet_ids[0]
+  }
+
+  instance_market_options {
+    market_type = "spot"
+  }
+}
+
 resource "aws_instance" "bastion" {
   count = local.bastion_enabled ? 1 : 0
 
-  ami                    = data.aws_ami.al2023.id
-  instance_type          = local.bastion_instance_type
-  subnet_id              = local.private_subnet_ids[0]
-  vpc_security_group_ids = [aws_security_group.bastion[0].id]
-  iam_instance_profile   = aws_iam_instance_profile.bastion_ssm[0].name
-  key_name               = local.bastion_key_name
-
-  associate_public_ip_address = false
-  user_data                   = local.ssm_user_data
-  user_data_replace_on_change = true
+  launch_template {
+    id      = aws_launch_template.bastion[0].id
+    version = aws_launch_template.bastion[0].latest_version
+  }
 
   tags = {
     Name = "${local.project_name}-bastion"
