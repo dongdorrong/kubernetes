@@ -43,6 +43,31 @@ resource "aws_iam_role_policy" "bastion_eks_describe" {
   })
 }
 
+resource "aws_iam_role_policy" "bastion_access_test" {
+  count = local.bastion_enabled && local.access_test_enabled ? 1 : 0
+
+  name = "${local.project_name}-bastion-access-test"
+  role = aws_iam_role.bastion_ssm[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "ReadRdsMasterPassword"
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = aws_secretsmanager_secret.rds_master_password.arn
+      },
+      {
+        Sid      = "AssumeAccessTestRole"
+        Effect   = "Allow"
+        Action   = ["sts:AssumeRole"]
+        Resource = aws_iam_role.access_test[0].arn
+      },
+    ]
+  })
+}
+
 resource "aws_iam_instance_profile" "bastion_ssm" {
   count = local.bastion_enabled ? 1 : 0
 
@@ -76,7 +101,7 @@ resource "aws_launch_template" "bastion" {
   image_id               = data.aws_ami.al2023.id
   instance_type          = local.bastion_instance_type
   key_name               = local.bastion_key_name
-  user_data              = base64encode(local.ssm_user_data)
+  user_data              = base64gzip(local.ssm_user_data)
   update_default_version = true
 
   iam_instance_profile {
@@ -103,8 +128,23 @@ resource "aws_instance" "bastion" {
   }
 
   tags = {
-    Name = "${local.project_name}-bastion"
+    Name          = "${local.project_name}-bastion"
+    SSMRunCommand = "${local.project_name}-bootstrap"
   }
 
-  depends_on = [aws_eks_cluster.this]
+  lifecycle {
+    ignore_changes = [user_data]
+  }
+
+  depends_on = [
+    aws_eks_cluster.this,
+    aws_eks_node_group.default,
+    aws_eks_addon.ebs_csi,
+    aws_eks_access_policy_association.bastion_admin,
+    aws_eks_access_policy_association.access_test_view,
+    aws_iam_role_policy.access_test,
+    aws_iam_role_policy.bastion_access_test,
+    aws_iam_role_policy.teleport_agent_rds,
+    aws_vpc_endpoint.ssm,
+  ]
 }

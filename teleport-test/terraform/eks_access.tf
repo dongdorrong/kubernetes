@@ -37,3 +37,23 @@ resource "aws_eks_access_policy_association" "bastion_admin" {
     type = "cluster"
   }
 }
+
+resource "aws_eks_access_entry" "access_test" {
+  count = local.access_test_enabled && local.bastion_enabled ? 1 : 0
+
+  cluster_name  = aws_eks_cluster.this.name
+  principal_arn = aws_iam_role.access_test[0].arn
+  type          = "STANDARD"
+}
+
+resource "aws_eks_access_policy_association" "access_test_view" {
+  count = local.access_test_enabled && local.bastion_enabled ? 1 : 0
+
+  cluster_name  = aws_eks_cluster.this.name
+  principal_arn = aws_eks_access_entry.access_test[0].principal_arn
+  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSViewPolicy"
+
+  access_scope {
+    type = "cluster"
+  }
+}

@@ -11,6 +11,18 @@ resource "aws_security_group" "rds" {
     security_groups = [aws_security_group.worker_default.id]
   }
 
+  dynamic "ingress" {
+    for_each = local.bastion_enabled && local.access_test_enabled ? [aws_security_group.bastion[0].id] : []
+
+    content {
+      description     = "PostgreSQL bootstrap from private bastion"
+      from_port       = local.rds_port
+      to_port         = local.rds_port
+      protocol        = "tcp"
+      security_groups = [ingress.value]
+    }
+  }
+
   egress {
     from_port   = 0
     to_port     = 0

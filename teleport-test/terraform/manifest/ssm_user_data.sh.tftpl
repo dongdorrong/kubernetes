@@ -1,5 +1,12 @@
 #!/bin/bash
 set -euo pipefail
+export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+
+LOG_DIR="/var/log/teleport-bootstrap"
+mkdir -p "$LOG_DIR"
+exec > >(tee -a "$LOG_DIR/userdata.log") 2>&1
+
+echo "== $(date -Is) teleport bootstrap start =="
 
 TARGET_USER="root"
 TARGET_HOME="/root"
@@ -12,12 +19,12 @@ elif id -u ec2-user >/dev/null 2>&1; then
 fi
 
 if command -v dnf >/dev/null 2>&1; then
-  dnf install -y amazon-ssm-agent git awscli curl-minimal tar gzip || true
+  dnf install -y amazon-ssm-agent git awscli curl-minimal tar gzip postgresql15 || dnf install -y amazon-ssm-agent git awscli curl-minimal tar gzip postgresql || true
 elif command -v yum >/dev/null 2>&1; then
-  yum install -y amazon-ssm-agent git awscli curl tar gzip || true
+  yum install -y amazon-ssm-agent git awscli curl tar gzip postgresql15 || yum install -y amazon-ssm-agent git awscli curl tar gzip postgresql || true
 elif command -v apt >/dev/null 2>&1; then
   apt update -y || true
-  apt install -y awscli curl git tar gzip wget || true
+  apt install -y awscli curl git tar gzip wget postgresql-client || true
 fi
 
 systemctl enable --now amazon-ssm-agent || true
@@ -26,6 +33,37 @@ WORKDIR="$${TARGET_HOME}"
 if [ ! -d "$${WORKDIR}" ]; then
   WORKDIR="/root"
 fi
+
+BOOTSTRAP_DIR="/etc/teleport"
+KUBECONFIG_SHARED="$${BOOTSTRAP_DIR}/kubeconfig"
+mkdir -p "$${BOOTSTRAP_DIR}" "$${BOOTSTRAP_DIR}/helm" /var/log/teleport-bootstrap
+cat >"$${BOOTSTRAP_DIR}/bootstrap.env" <<ENV
+export TELEPORT_CLUSTER_NAME="${cluster_name}"
+export AWS_REGION="${region}"
+export RDS_ENDPOINT="${rds_endpoint}"
+export RDS_PORT="${rds_port}"
+export RDS_DB_NAME="${rds_db_name}"
+export RDS_MASTER_USERNAME="${rds_master_username}"
+export RDS_MASTER_PASSWORD_SECRET_ARN="${rds_master_password_secret_arn}"
+export ACCESS_TEST_ENABLED="${access_test_enabled}"
+export ACCESS_TEST_ROLE_ARN="${access_test_role_arn}"
+export ACCESS_TEST_TELEPORT_USER="${access_test_teleport_user}"
+export ACCESS_TEST_DB_USER="${access_test_db_user}"
+export ACCESS_TEST_KUBERNETES_GROUP="${access_test_kubernetes_group}"
+export TELEPORT_AGENT_IRSA_ROLE_ARN="${teleport_agent_irsa_role_arn}"
+export TELEPORT_AGENT_SERVICE_ACCOUNT="${teleport_agent_service_account}"
+export TELEPORT_AGENT_NAMESPACE="${teleport_agent_namespace}"
+export KUBECONFIG="$${KUBECONFIG_SHARED}"
+export HELM_VALUES_DIR="$${BOOTSTRAP_DIR}/helm"
+ENV
+chmod 0644 "$${BOOTSTRAP_DIR}/bootstrap.env"
+
+cat >/etc/profile.d/teleport-bootstrap.sh <<'PROFILE'
+if [ -f /etc/teleport/bootstrap.env ]; then
+  . /etc/teleport/bootstrap.env
+fi
+PROFILE
+chmod 0644 /etc/profile.d/teleport-bootstrap.sh
 
 if ! command -v k9s >/dev/null 2>&1; then
   set +e
@@ -58,7 +96,7 @@ fi
 
 if ! command -v tsh >/dev/null 2>&1; then
   set +e
-  TELEPORT_VERSION="18.6.4"
+  TELEPORT_VERSION="18.8.3"
   curl -L -o "$${WORKDIR}/teleport.tar.gz" "https://cdn.teleport.dev/teleport-v$${TELEPORT_VERSION}-linux-amd64-bin.tar.gz"
   tar -xzf "$${WORKDIR}/teleport.tar.gz" -C "$${WORKDIR}"
   "$${WORKDIR}/teleport/install"
@@ -66,3 +104,470 @@ if ! command -v tsh >/dev/null 2>&1; then
   rm -rf "$${WORKDIR}/teleport"
   set -e
 fi
+
+step() {
+  echo
+  echo "== $(date -Is) $* =="
+}
+
+require_bootstrap_context() {
+  . "$BOOTSTRAP_DIR/bootstrap.env"
+  : "$${TELEPORT_CLUSTER_NAME:?missing TELEPORT_CLUSTER_NAME}"
+  : "$${AWS_REGION:?missing AWS_REGION}"
+  : "$${RDS_ENDPOINT:?missing RDS_ENDPOINT}"
+  : "$${RDS_PORT:?missing RDS_PORT}"
+  : "$${RDS_DB_NAME:?missing RDS_DB_NAME}"
+  : "$${KUBECONFIG:?missing KUBECONFIG}"
+  : "$${HELM_VALUES_DIR:?missing HELM_VALUES_DIR}"
+
+  for bin in aws kubectl helm tsh; do
+    command -v "$bin"
+  done
+
+  if [ "$ACCESS_TEST_ENABLED" = "true" ]; then
+    : "$${RDS_MASTER_USERNAME:?missing RDS_MASTER_USERNAME}"
+    : "$${RDS_MASTER_PASSWORD_SECRET_ARN:?missing RDS_MASTER_PASSWORD_SECRET_ARN}"
+    : "$${ACCESS_TEST_ROLE_ARN:?missing ACCESS_TEST_ROLE_ARN}"
+    : "$${ACCESS_TEST_TELEPORT_USER:?missing ACCESS_TEST_TELEPORT_USER}"
+    : "$${ACCESS_TEST_DB_USER:?missing ACCESS_TEST_DB_USER}"
+    : "$${ACCESS_TEST_KUBERNETES_GROUP:?missing ACCESS_TEST_KUBERNETES_GROUP}"
+    : "$${TELEPORT_AGENT_IRSA_ROLE_ARN:?missing TELEPORT_AGENT_IRSA_ROLE_ARN}"
+    command -v psql
+  fi
+}
+
+bootstrap_kubeconfig() {
+  step "create kubeconfig"
+  mkdir -p "$(dirname "$KUBECONFIG")"
+  aws eks update-kubeconfig --name "$TELEPORT_CLUSTER_NAME" --region "$AWS_REGION" --kubeconfig "$KUBECONFIG"
+  chmod 0644 "$KUBECONFIG"
+
+  for _ in $(seq 1 60); do
+    if KUBECONFIG="$KUBECONFIG" kubectl get nodes -o wide; then
+      return 0
+    fi
+    sleep 10
+  done
+
+  echo "kubectl could not reach the private EKS endpoint" >&2
+  return 1
+}
+
+bootstrap_storageclass() {
+  step "ensure default gp3 StorageClass"
+  DEFAULT_SC=$(KUBECONFIG="$KUBECONFIG" kubectl get sc -o jsonpath='{range .items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")]}{.metadata.name}{"\n"}{end}' 2>/dev/null || true)
+  if [ -n "$DEFAULT_SC" ]; then
+    echo "default StorageClass already exists: $DEFAULT_SC"
+    KUBECONFIG="$KUBECONFIG" kubectl get sc
+    return 0
+  fi
+
+  cat >/tmp/gp3-storageclass.yaml <<'EOF'
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp3
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: ebs.csi.aws.com
+parameters:
+  type: gp3
+  fsType: ext4
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+EOF
+
+  KUBECONFIG="$KUBECONFIG" kubectl apply -f /tmp/gp3-storageclass.yaml
+  KUBECONFIG="$KUBECONFIG" kubectl get sc
+}
+
+access_tests_enabled() {
+  [ "$ACCESS_TEST_ENABLED" = "true" ]
+}
+
+validate_pg_identifier() {
+  local value="$1"
+  local label="$2"
+
+  if [[ ! "$value" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+    echo "$label must be a PostgreSQL-safe identifier: $value" >&2
+    return 1
+  fi
+}
+
+bootstrap_rds_iam_user() {
+  if ! access_tests_enabled; then
+    return 0
+  fi
+
+  step "ensure RDS IAM test user"
+  validate_pg_identifier "$RDS_DB_NAME" "RDS_DB_NAME"
+  validate_pg_identifier "$ACCESS_TEST_DB_USER" "ACCESS_TEST_DB_USER"
+
+  local master_password ready
+  master_password=$(aws secretsmanager get-secret-value \
+    --secret-id "$RDS_MASTER_PASSWORD_SECRET_ARN" \
+    --region "$AWS_REGION" \
+    --query SecretString \
+    --output text)
+
+  ready="false"
+  for _ in $(seq 1 60); do
+    if PGPASSWORD="$master_password" psql "host=$RDS_ENDPOINT port=$RDS_PORT dbname=$RDS_DB_NAME user=$RDS_MASTER_USERNAME sslmode=require connect_timeout=5" -v ON_ERROR_STOP=1 -c 'select 1;' >/dev/null; then
+      ready="true"
+      break
+    fi
+    sleep 10
+  done
+
+  if [ "$ready" != "true" ]; then
+    echo "RDS did not accept PostgreSQL connections from the bastion" >&2
+    return 1
+  fi
+
+  PGPASSWORD="$master_password" psql "host=$RDS_ENDPOINT port=$RDS_PORT dbname=$RDS_DB_NAME user=$RDS_MASTER_USERNAME sslmode=require" -v ON_ERROR_STOP=1 <<SQL
+DO \$\$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '$ACCESS_TEST_DB_USER') THEN
+    CREATE ROLE "$ACCESS_TEST_DB_USER" LOGIN;
+  END IF;
+END
+\$\$;
+
+GRANT rds_iam TO "$ACCESS_TEST_DB_USER";
+GRANT CONNECT ON DATABASE "$RDS_DB_NAME" TO "$ACCESS_TEST_DB_USER";
+GRANT USAGE ON SCHEMA public TO "$ACCESS_TEST_DB_USER";
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO "$ACCESS_TEST_DB_USER";
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO "$ACCESS_TEST_DB_USER";
+SQL
+}
+
+get_teleport_proxy_host() {
+  local proxy_host
+  proxy_host=$(KUBECONFIG="$KUBECONFIG" kubectl -n default get svc teleport-cluster -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+  if [ -z "$proxy_host" ]; then
+    proxy_host=$(KUBECONFIG="$KUBECONFIG" kubectl -n default get svc teleport-cluster -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+  fi
+  printf '%s' "$proxy_host"
+}
+
+wait_for_teleport_proxy_host() {
+  local proxy_host
+  for _ in $(seq 1 60); do
+    proxy_host=$(get_teleport_proxy_host)
+    if [ -n "$proxy_host" ]; then
+      printf '%s' "$proxy_host"
+      return 0
+    fi
+    sleep 10
+  done
+  return 1
+}
+
+write_teleport_cluster_values() {
+  local cluster_name_value="$1"
+  mkdir -p "$HELM_VALUES_DIR"
+  cat >"$HELM_VALUES_DIR/teleport-cluster-values.yaml" <<EOF
+clusterName: "$cluster_name_value"
+kubeClusterName: "$TELEPORT_CLUSTER_NAME"
+
+authentication:
+  type: local
+
+service:
+  type: LoadBalancer
+EOF
+}
+
+bootstrap_teleport_cluster() {
+  step "install Teleport cluster"
+  local proxy_host
+  proxy_host=$(get_teleport_proxy_host)
+  if [ -z "$proxy_host" ]; then
+    proxy_host="teleport.example.com"
+  fi
+
+  write_teleport_cluster_values "$proxy_host"
+  KUBECONFIG="$KUBECONFIG" helm repo add teleport https://charts.releases.teleport.dev >/dev/null 2>&1 || true
+  KUBECONFIG="$KUBECONFIG" helm repo update
+  KUBECONFIG="$KUBECONFIG" helm upgrade --install teleport-cluster teleport/teleport-cluster -f "$HELM_VALUES_DIR/teleport-cluster-values.yaml"
+  KUBECONFIG="$KUBECONFIG" kubectl -n default rollout status deploy/teleport-cluster-auth --timeout=10m
+
+  proxy_host=$(wait_for_teleport_proxy_host) || {
+    echo "Teleport load balancer address was not assigned" >&2
+    return 1
+  }
+
+  write_teleport_cluster_values "$proxy_host"
+  KUBECONFIG="$KUBECONFIG" helm upgrade --install teleport-cluster teleport/teleport-cluster -f "$HELM_VALUES_DIR/teleport-cluster-values.yaml"
+  echo "$proxy_host" >"$BOOTSTRAP_DIR/proxy_host"
+  KUBECONFIG="$KUBECONFIG" kubectl -n default get svc teleport-cluster -o wide
+}
+
+bootstrap_teleport_agent() {
+  step "install Teleport kube/db agent"
+  local proxy_host proxy_port token_output token status_output ca_pin
+
+  proxy_host=$(cat "$BOOTSTRAP_DIR/proxy_host" 2>/dev/null || true)
+  if [ -z "$proxy_host" ]; then
+    proxy_host=$(get_teleport_proxy_host)
+  fi
+  if [ -z "$proxy_host" ]; then
+    echo "Teleport proxy host is empty" >&2
+    return 1
+  fi
+
+  proxy_port=$(KUBECONFIG="$KUBECONFIG" kubectl -n default get svc teleport-cluster -o jsonpath='{range .spec.ports[?(@.name=="web")]}{.port}{"\n"}{end}' 2>/dev/null || true)
+  if [ -z "$proxy_port" ]; then
+    proxy_port=443
+  fi
+
+  KUBECONFIG="$KUBECONFIG" kubectl -n default rollout status deploy/teleport-cluster-auth --timeout=10m
+
+  token_output=$(KUBECONFIG="$KUBECONFIG" kubectl -n default exec deploy/teleport-cluster-auth -- tctl tokens add --type=kube,db --ttl=1h 2>/dev/null)
+  token=$(printf '%s\n' "$token_output" | awk '/invite token/ {print $NF; exit}')
+  if [ -z "$token" ]; then
+    echo "Teleport join token is empty" >&2
+    return 1
+  fi
+
+  status_output=$(KUBECONFIG="$KUBECONFIG" kubectl -n default exec deploy/teleport-cluster-auth -- tctl status 2>/dev/null || true)
+  ca_pin=$(printf '%s\n' "$status_output" | awk '/CA pin/ {print $NF; exit}')
+
+  cat >"$HELM_VALUES_DIR/teleport-kube-agent-values.yaml" <<EOF
+roles: "kube,db"
+proxyAddr: "$proxy_host:$proxy_port"
+insecureSkipProxyTLSVerify: true
+
+joinParams:
+  method: "token"
+  tokenName: "$token"
+
+kubeClusterName: "$TELEPORT_CLUSTER_NAME"
+EOF
+
+  if [ -n "$TELEPORT_AGENT_IRSA_ROLE_ARN" ]; then
+    cat >>"$HELM_VALUES_DIR/teleport-kube-agent-values.yaml" <<EOF
+
+serviceAccount:
+  name: "$TELEPORT_AGENT_SERVICE_ACCOUNT"
+
+annotations:
+  serviceAccount:
+    eks.amazonaws.com/role-arn: "$TELEPORT_AGENT_IRSA_ROLE_ARN"
+EOF
+  fi
+
+  if [ -n "$ca_pin" ]; then
+    cat >>"$HELM_VALUES_DIR/teleport-kube-agent-values.yaml" <<EOF
+
+caPin:
+  - "$ca_pin"
+EOF
+  fi
+
+  cat >>"$HELM_VALUES_DIR/teleport-kube-agent-values.yaml" <<EOF
+
+databases:
+  - name: "teleport-rds"
+    uri: "$RDS_ENDPOINT:$RDS_PORT"
+    protocol: "postgres"
+    aws:
+      region: "$AWS_REGION"
+    static_labels:
+      env: "dev"
+EOF
+  chmod 0600 "$HELM_VALUES_DIR/teleport-kube-agent-values.yaml"
+
+  KUBECONFIG="$KUBECONFIG" helm upgrade --install teleport-agent teleport/teleport-kube-agent -f "$HELM_VALUES_DIR/teleport-kube-agent-values.yaml"
+  KUBECONFIG="$KUBECONFIG" kubectl -n default rollout restart statefulset/teleport-agent
+  KUBECONFIG="$KUBECONFIG" kubectl -n default delete pod teleport-agent-0 --wait=false || true
+  KUBECONFIG="$KUBECONFIG" kubectl -n default rollout status statefulset/teleport-agent --timeout=10m
+  KUBECONFIG="$KUBECONFIG" kubectl -n default get pods -l app=teleport-agent -o wide
+}
+
+bootstrap_access_controls() {
+  if ! access_tests_enabled; then
+    return 0
+  fi
+
+  step "configure access test RBAC"
+  KUBECONFIG="$KUBECONFIG" kubectl apply -f - <<EOF
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: teleport-test-view
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: "$ACCESS_TEST_KUBERNETES_GROUP"
+EOF
+
+  cat >"$BOOTSTRAP_DIR/teleport-access-test.yaml" <<EOF
+kind: role
+version: v8
+metadata:
+  name: teleport-test-access
+spec:
+  allow:
+    kubernetes_labels:
+      "*": "*"
+    kubernetes_groups:
+      - "$ACCESS_TEST_KUBERNETES_GROUP"
+    kubernetes_resources:
+      - kind: "*"
+        api_group: "*"
+        name: "*"
+        namespace: "*"
+        verbs: ["get", "list", "watch"]
+    db_labels:
+      env: ["dev"]
+    db_names:
+      - "$RDS_DB_NAME"
+    db_users:
+      - "$ACCESS_TEST_DB_USER"
+---
+kind: user
+version: v2
+metadata:
+  name: "$ACCESS_TEST_TELEPORT_USER"
+spec:
+  roles:
+    - teleport-test-access
+EOF
+
+  KUBECONFIG="$KUBECONFIG" kubectl -n default exec -i deploy/teleport-cluster-auth -- tctl create -f - <"$BOOTSTRAP_DIR/teleport-access-test.yaml"
+}
+
+bootstrap_direct_aws_access_test() {
+  if ! access_tests_enabled; then
+    return 0
+  fi
+
+  step "direct AWS IAM access smoke test"
+  (
+    set -euo pipefail
+
+    local creds direct_kubeconfig direct_ready token
+    creds=$(aws sts assume-role \
+      --role-arn "$ACCESS_TEST_ROLE_ARN" \
+      --role-session-name "${cluster_name}-access-test" \
+      --duration-seconds 900 \
+      --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
+      --output text)
+    read -r AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN <<<"$creds"
+    export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+
+    direct_kubeconfig="$BOOTSTRAP_DIR/access-test-direct-kubeconfig"
+    aws eks update-kubeconfig --name "$TELEPORT_CLUSTER_NAME" --region "$AWS_REGION" --kubeconfig "$direct_kubeconfig"
+
+    direct_ready="false"
+    for _ in $(seq 1 30); do
+      if KUBECONFIG="$direct_kubeconfig" kubectl auth can-i get pods --all-namespaces && KUBECONFIG="$direct_kubeconfig" kubectl get pods -A --request-timeout=30s; then
+        direct_ready="true"
+        break
+      fi
+      sleep 10
+    done
+    if [ "$direct_ready" != "true" ]; then
+      echo "direct IAM role could not read Kubernetes pods" >&2
+      exit 1
+    fi
+
+    token=$(aws rds generate-db-auth-token \
+      --hostname "$RDS_ENDPOINT" \
+      --port "$RDS_PORT" \
+      --region "$AWS_REGION" \
+      --username "$ACCESS_TEST_DB_USER")
+    PGPASSWORD="$token" psql "host=$RDS_ENDPOINT port=$RDS_PORT dbname=$RDS_DB_NAME user=$ACCESS_TEST_DB_USER sslmode=require connect_timeout=10" -v ON_ERROR_STOP=1 -c 'select current_user, current_database();'
+  )
+}
+
+bootstrap_teleport_access_test() {
+  if ! access_tests_enabled; then
+    return 0
+  fi
+
+  step "Teleport kube/db access smoke test"
+  local proxy_host proxy_port identity_file tsh_home teleport_kubeconfig
+
+  proxy_host=$(cat "$BOOTSTRAP_DIR/proxy_host" 2>/dev/null || true)
+  if [ -z "$proxy_host" ]; then
+    proxy_host=$(get_teleport_proxy_host)
+  fi
+  if [ -z "$proxy_host" ]; then
+    echo "Teleport proxy host is empty" >&2
+    return 1
+  fi
+
+  proxy_port=$(KUBECONFIG="$KUBECONFIG" kubectl -n default get svc teleport-cluster -o jsonpath='{range .spec.ports[?(@.name=="web")]}{.port}{"\n"}{end}' 2>/dev/null || true)
+  if [ -z "$proxy_port" ]; then
+    proxy_port=443
+  fi
+
+  identity_file="$BOOTSTRAP_DIR/teleport-access-test-identity.pem"
+  KUBECONFIG="$KUBECONFIG" kubectl -n default exec deploy/teleport-cluster-auth -- tctl auth sign \
+    --user "$ACCESS_TEST_TELEPORT_USER" \
+    --out /dev/stdout \
+    --ttl 30m \
+    --format file \
+    --overwrite >"$identity_file"
+  chmod 0600 "$identity_file"
+
+  tsh_home="$BOOTSTRAP_DIR/tsh-access-test"
+  mkdir -p "$tsh_home"
+
+  TELEPORT_HOME="$tsh_home" tsh --identity="$identity_file" --proxy="$proxy_host:$proxy_port" --insecure kube ls
+  teleport_kubeconfig="$BOOTSTRAP_DIR/teleport-access-test-kubeconfig"
+  TELEPORT_HOME="$tsh_home" KUBECONFIG="$teleport_kubeconfig" tsh --identity="$identity_file" --proxy="$proxy_host:$proxy_port" --insecure kube login "$TELEPORT_CLUSTER_NAME"
+  if ! grep -q -- "--identity=$identity_file" "$teleport_kubeconfig"; then
+    sed -i "/^[[:space:]]*- credentials$/a\\      - --identity=$identity_file" "$teleport_kubeconfig"
+  fi
+  TELEPORT_HOME="$tsh_home" KUBECONFIG="$teleport_kubeconfig" kubectl auth can-i get pods --all-namespaces
+  TELEPORT_HOME="$tsh_home" KUBECONFIG="$teleport_kubeconfig" kubectl get pods -A --request-timeout=30s
+
+  TELEPORT_HOME="$tsh_home" tsh --identity="$identity_file" --proxy="$proxy_host:$proxy_port" --insecure db ls
+  TELEPORT_HOME="$tsh_home" tsh --identity="$identity_file" --proxy="$proxy_host:$proxy_port" --insecure db exec \
+    'select current_user, current_database();' \
+    --dbs=teleport-rds \
+    --db-name="$RDS_DB_NAME" \
+    --db-user="$ACCESS_TEST_DB_USER" \
+    --no-confirm
+}
+
+bootstrap_verify() {
+  step "verify Teleport bootstrap"
+  echo "== helm releases =="
+  KUBECONFIG="$KUBECONFIG" helm list -A
+  echo "== teleport pods =="
+  KUBECONFIG="$KUBECONFIG" kubectl -n default get pods -o wide
+  echo "== teleport services =="
+  KUBECONFIG="$KUBECONFIG" kubectl -n default get svc -o wide
+  echo "== storage classes =="
+  KUBECONFIG="$KUBECONFIG" kubectl get sc
+  echo "== generated values =="
+  ls -la "$HELM_VALUES_DIR"
+  sed -n '1,220p' "$HELM_VALUES_DIR/teleport-cluster-values.yaml" || true
+  sed -E 's/(tokenName: ).*/\1<redacted>/' "$HELM_VALUES_DIR/teleport-kube-agent-values.yaml" || true
+}
+
+require_bootstrap_context
+step "caller identity"
+aws sts get-caller-identity
+step "EKS cluster"
+aws eks describe-cluster --name "$TELEPORT_CLUSTER_NAME" --region "$AWS_REGION" --query 'cluster.{name:name,status:status,endpoint:endpoint,private:resourcesVpcConfig.endpointPrivateAccess,public:resourcesVpcConfig.endpointPublicAccess}' --output table
+bootstrap_kubeconfig
+bootstrap_storageclass
+bootstrap_rds_iam_user
+bootstrap_direct_aws_access_test
+bootstrap_teleport_cluster
+bootstrap_teleport_agent
+bootstrap_access_controls
+bootstrap_teleport_access_test
+bootstrap_verify
+
+echo "== $(date -Is) teleport bootstrap complete =="

@@ -35,6 +35,31 @@ output "rds_password" {
   sensitive = true
 }
 
+output "rds_master_password_secret_arn" {
+  value     = aws_secretsmanager_secret.rds_master_password.arn
+  sensitive = true
+}
+
+output "rds_iam_auth_enabled" {
+  value = aws_db_instance.teleport.iam_database_authentication_enabled
+}
+
+output "access_test_role_arn" {
+  value = local.access_test_role_arn != "" ? local.access_test_role_arn : null
+}
+
+output "access_test_teleport_user" {
+  value = local.access_test_enabled ? local.access_test_teleport_user : null
+}
+
+output "access_test_db_user" {
+  value = local.access_test_enabled ? local.access_test_db_user : null
+}
+
+output "teleport_agent_irsa_role_arn" {
+  value = local.teleport_agent_rds_role_arn != "" ? local.teleport_agent_rds_role_arn : null
+}
+
 output "ec2_instance_id" {
   value = try(aws_instance.teleport_node[0].id, null)
 }
@@ -57,4 +82,15 @@ output "bastion_private_ip" {
 
 output "bastion_ssm_start_session" {
   value = local.bastion_enabled ? "aws ssm start-session --target ${aws_instance.bastion[0].id} --region ${local.region} --profile ${local.profile}" : null
+}
+
+output "bastion_ssm_run_command_sequence" {
+  value = local.bastion_enabled ? sort(keys(aws_ssm_document.teleport_run_command)) : []
+}
+
+output "bastion_ssm_run_commands" {
+  value = local.bastion_enabled ? {
+    for key in sort(keys(aws_ssm_document.teleport_run_command)) :
+    key => "aws ssm send-command --document-name ${aws_ssm_document.teleport_run_command[key].name} --instance-ids ${aws_instance.bastion[0].id} --region ${local.region} --profile ${local.profile}"
+  } : {}
 }

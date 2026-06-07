@@ -35,6 +35,16 @@ locals {
   rds_multi_az              = var.rds_multi_az
   rds_backup_retention_days = var.rds_backup_retention_days > 0 ? var.rds_backup_retention_days : 7
 
+  access_test_enabled            = var.access_test_enabled
+  access_test_teleport_user      = var.access_test_teleport_user != "" ? var.access_test_teleport_user : "teleport-test-user"
+  access_test_db_user            = var.access_test_db_user != "" ? var.access_test_db_user : "teleport_ro"
+  access_test_kubernetes_group   = "teleport-k8s-viewer"
+  teleport_agent_namespace       = "default"
+  teleport_agent_service_account = "teleport-agent"
+  teleport_agent_rds_role_arn    = try(aws_iam_role.teleport_agent_rds[0].arn, "")
+  access_test_role_arn           = try(aws_iam_role.access_test[0].arn, "")
+  rds_master_password_secret_arn = aws_secretsmanager_secret.rds_master_password.arn
+
   caller_arn              = data.aws_caller_identity.current.arn
   caller_is_assumed_role  = can(regex("^arn:aws:sts::\\d+:assumed-role/.+/.+$", local.caller_arn))
   caller_account_id       = local.caller_is_assumed_role ? element(split(":", local.caller_arn), 4) : null
@@ -52,9 +62,21 @@ locals {
   } : {}
 
   ssm_user_data = templatefile("${path.module}/manifest/ssm_user_data.sh.tftpl", {
-    cluster_name = local.cluster_name
-    region       = local.region
-    rds_endpoint = aws_db_instance.teleport.address
+    cluster_name                   = local.cluster_name
+    region                         = local.region
+    rds_endpoint                   = aws_db_instance.teleport.address
+    rds_port                       = local.rds_port
+    rds_db_name                    = local.rds_db_name
+    rds_master_username            = local.rds_username
+    rds_master_password_secret_arn = local.rds_master_password_secret_arn
+    access_test_enabled            = local.access_test_enabled ? "true" : "false"
+    access_test_role_arn           = local.access_test_role_arn
+    access_test_teleport_user      = local.access_test_teleport_user
+    access_test_db_user            = local.access_test_db_user
+    access_test_kubernetes_group   = local.access_test_kubernetes_group
+    teleport_agent_irsa_role_arn   = local.teleport_agent_rds_role_arn
+    teleport_agent_service_account = local.teleport_agent_service_account
+    teleport_agent_namespace       = local.teleport_agent_namespace
   })
 
   node_name_format = "${local.cluster_name}-node"

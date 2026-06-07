@@ -154,6 +154,24 @@ variable "rds_backup_retention_days" {
   default     = 0
 }
 
+variable "access_test_enabled" {
+  description = "Enable bootstrap-time access tests for EKS, RDS IAM auth, and Teleport access"
+  type        = bool
+  default     = true
+}
+
+variable "access_test_teleport_user" {
+  description = "Teleport local user created for bootstrap-time access tests"
+  type        = string
+  default     = "teleport-test-user"
+}
+
+variable "access_test_db_user" {
+  description = "PostgreSQL IAM-authenticated database user used for bootstrap-time RDS access tests"
+  type        = string
+  default     = "teleport_ro"
+}
+
 variable "ec2_enabled" {
   description = "Whether to create a Teleport test EC2 instance"
   type        = bool

@@ -63,5 +63,9 @@ resource "aws_security_group" "worker_default" {
     Name = "${local.project_name}-worker-sg"
   }
 
+  lifecycle {
+    ignore_changes = [ingress]
+  }
+
   depends_on = [aws_eks_cluster.this]
 }
