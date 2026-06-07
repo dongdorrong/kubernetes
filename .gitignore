@@ -2,6 +2,9 @@
 .terraform*
 terraform_bak
 terraform.tfstate*
+tfplan
+*.tfplan
+*.tfplan.json
 update_config.sh
 docker_registry.sh
 install.sh
